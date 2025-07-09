@@ -63,7 +63,7 @@ class FibreSolution:
         r = np.sqrt((x - 0.5) ** 2 + (y - 0.5) ** 2)
         self.epsilon[r < self.core_radius] = self.core_eps
 
-        edge_epsilons = np.mean(self.epsilon[self.K[sc_index].simplices], axis=1)
+        edge_epsilons = np.average(self.epsilon[self.K[sc_index].simplices], axis=1)
         self.Hodges[sc_index][0] @= np.diagflat(edge_epsilons)
         self.Hodges[sc_index][1] @= np.diagflat(1 / edge_epsilons)
         # for ind, vertices in enumerate(self.K[sc_index].simplices):
