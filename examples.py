@@ -30,7 +30,10 @@ def EM_field():
     fs.plot_data_on_edges(mode=0)
 
 
-def ScalarLaplacian():
+def ScalarLaplacianDirichlet():
+    # Solving the Laplacian, with a 0-form field defined on the vertices
+    # Using Dirichlet boundary conditions
+
     lambda0 = 1.55e-6
     k0 = 2*np.pi/lambda0
 
@@ -38,15 +41,35 @@ def ScalarLaplacian():
     fs.setup(epsilon_sc_index=1, merge_type="average")
 
     A = fs.Hodges[0][1] @ fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # Hodge0_inv @ d0.T @ Hodge1 @ d0
-    B = np.eye(fs.K[1].num_simplices)  # identity matrix, with same dimensions as A
+    B = np.eye(fs.K[0].num_simplices)  # identity matrix, with same dimensions as A
 
     eigenvalues, eigenvectors = fs.solve_with_dirichlet(A, B, 0, mode_number=6)
     n_eff = np.sqrt(k0 ** 2 / eigenvalues)
     print(eigenvalues, n_eff)  # gives omega (or beta) values
 
     fs.plot_n_shaded()
-    fs.plot_data_on_vertices_shaded(mode=0)
+    for m in range(6):
+        fs.plot_data_on_vertices_shaded(mode=m)
 
+def ScalarLaplacianPML():
+    # Solving the Laplacian, with a 0-form field defined on the vertices
+    # Using a perfectly matched layer with increasing loss coefficient
+    lambda0 = 1.55e-6
+    k0 = 2*np.pi/lambda0
+
+    fs = FibreSolution(n=20, core_radius=0.25, core_n=1.45, cladding_n=1.44)
+    fs.setup(epsilon_sc_index=1, merge_type="max", use_pml=True)
+
+    A = fs.Hodges[0][1] @ fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # Hodge0_inv @ d0.T @ Hodge1 @ d0
+    B = np.eye(fs.K[0].num_simplices)  # identity matrix, with same dimensions as A
+
+    eigenvalues, eigenvectors = fs.solve(A, B, mode_number=6)
+    n_eff = np.sqrt(k0 ** 2 / eigenvalues)
+    print(eigenvalues, n_eff)  # gives omega (or beta) values
+
+    fs.plot_n_shaded()
+    for m in range(6):
+        fs.plot_data_on_vertices_shaded(mode=m)
 
 def Laplace_square():
     fs = FibreSolution(n=20, core_radius=0.0)

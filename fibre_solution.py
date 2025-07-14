@@ -12,7 +12,7 @@ from my_generation_pydec import simplicial_grid_2d
 
 
 class FibreSolution:
-    def __init__(self, sc: simplicial_complex = None, n: int = 20, core_radius: float = 0.4, core_n: float = 3., cladding_n: float = 1., buffer_size: float = 0.1):
+    def __init__(self, sc: simplicial_complex = None, n: int = 20, core_radius: float = 0.4, core_n: complex = 3., cladding_n: complex = 1., buffer_size: float = 0.1):
         # if no simplicial complex mesh provided, generate a square mesh instead, using n divisions per side
         if sc is None:
             vertices, triangles = simplicial_grid_2d(n)
@@ -29,10 +29,11 @@ class FibreSolution:
         self.Hodges = [[self.K[0].star, self.K[0].star_inv],
                        [self.K[1].star, self.K[1].star_inv],
                        [self.K[2].star, self.K[2].star_inv]]
-        self.n_vals = np.array([1])
+        self.n_vals = np.array([1], dtype=complex)
         self.n_mat = diags(self.n_vals)
         self.n_mat_inv = diags(self.n_vals)
         self.eigvals, self.eigvecs = np.array([]), np.array([])
+        self.use_pml = False
         self.setup()
 
     def barycenter(self, sc_index: int = 1):
@@ -61,7 +62,7 @@ class FibreSolution:
     def create_n_geometry(self):
         # create a matrix of refractive index values at each vertex
         # these will be averaged to find the values for the edges or faces
-        self.n_vals = np.ones(len(self.K.vertices)) * self.cladding_n
+        self.n_vals = np.ones(len(self.K.vertices), dtype=complex) * self.cladding_n
 
         barycenter_points = self.barycenter(0)
         x, y = barycenter_points.T
@@ -80,17 +81,16 @@ class FibreSolution:
         self.Hodges[sc_index][0] = self.K[sc_index].star @ (self.n_mat_inv ** 2)
         self.Hodges[sc_index][1] = self.K[sc_index].star_inv @ (self.n_mat ** 2)
 
-    def create_pml_vertex_buffer(self, max_imaginary_index: float = 0.1):
+    def create_pml_vertex_buffer(self, max_imaginary_index: float = .1):
         # max_imaginary_index controls the decay speed inside the buffer
 
         # find the points within the buffer zone at the edge (for the perfectly matched layer)
         x, y = self.K.vertices.T
-        dist_to_edge = np.min([x, 1 - x, y, 1 - y], axis=0)
+        dist_to_edge = np.min([x, 1. - x, y, 1. - y], axis=0)
         in_buffer = dist_to_edge < self.buffer_size
-
         # Add the complex loss part to the refractive index inside the Perfectly Matched Layer
         absorption = np.zeros_like(self.n_vals)
-        absorption[in_buffer] = 1j * ((1 - dist_to_edge[in_buffer] / self.buffer_size) ** 2) * max_imaginary_index
+        absorption[in_buffer] = 1j * (((1 - dist_to_edge[in_buffer] / self.buffer_size) ** 2) * max_imaginary_index)
 
         self.n_vals += absorption  # add the complex part to the vertices inside the buffer
 
@@ -98,8 +98,10 @@ class FibreSolution:
         # Set up the fibre geometry and different sections of refractive index
         # Also set up the perfectly matched layer, if it is being used
 
+        self.use_pml = use_pml
+
         self.create_n_geometry()
-        if use_pml:
+        if self.use_pml:
             self.create_pml_vertex_buffer()
         self.create_n_matrix(epsilon_sc_index, merge_type)
         self.apply_n_matrix(epsilon_sc_index)
@@ -116,7 +118,8 @@ class FibreSolution:
         B_reduced = B[internal_indices, :][:, internal_indices]
 
         # Solve the reduced eigenproblem: A e = λ B e
-        if real_matrix:  # when the matrix is known to be symmetric or Hermitian
+        # if a perfectly matched layer is being used, this will always require the complex solver
+        if real_matrix and not self.use_pml:  # when the matrix is known to be symmetric or Hermitian
             eigvals, eigvecs_reduced = spla.eigsh(A_reduced, k=mode_number, M=B_reduced, sigma=1.0, which=eigval_pref)
         else:  # when the matrix may be complex
             eigvals, eigvecs_reduced = spla.eigs(A_reduced, k=mode_number, M=B_reduced, sigma=1.0, which=eigval_pref)
@@ -134,9 +137,9 @@ class FibreSolution:
         self.eigvals, self.eigvecs = eigvals, eigvecs_full
         return self.eigvals, self.eigvecs
 
-    def solve(self, A: np.ndarray, B: np.ndarray, mode_number: int = 1, eigval_pref: str = "LM", real_matrix: bool = True):
+    def solve(self, A: np.ndarray, B: np.ndarray | None = None, mode_number: int = 1, eigval_pref: str = "LM", real_matrix: bool = True):
         # Solve the reduced eigenproblem: A e = λ B e
-        if real_matrix:  # when the matrix is known to be symmetric or Hermitian
+        if real_matrix and not self.use_pml:  # when the matrix is known to be symmetric or Hermitian
             eigvals, eigvecs = spla.eigsh(A, k=mode_number, M=B, sigma=1.0, which=eigval_pref)
         else:  # when the matrix may be complex
             eigvals, eigvecs= spla.eigs(A, k=mode_number, M=B, sigma=1.0, which=eigval_pref)
@@ -149,7 +152,7 @@ class FibreSolution:
         return self.eigvals, self.eigvecs
 
     def plot_n_shaded(self):
-        mode = self.n_vals  # shade using the epsilon values
+        mode = np.abs(self.n_vals)  # shade using the epsilon values
         plt.tripcolor(*self.K.vertices.T, mode, shading='gouraud')
         plt.title("Fundamental Mode Profile")
         plt.colorbar()
@@ -159,7 +162,7 @@ class FibreSolution:
         # plotting
         fig, ax = plt.subplots()
 
-        vals = self.n_vals
+        vals = np.abs(self.n_vals)
         # fill colour the triangles based on their epsilon value
         min_epsilon = np.min(vals)
         max_epsilon = np.max(vals)
@@ -177,9 +180,8 @@ class FibreSolution:
             plt.fill(trianglex, triangley, color=col, edgecolor="black", linewidth=2)
         cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax)  # add colorbar
         cbar.set_ticks(np.linspace(min_epsilon, max_epsilon, 6))
-        plt.title("Permittivity value")
+        plt.title("Refractive Index")
         plt.show()
-
 
     def plot_data_on_edges(self, mode: int = 0):
         # Plotting edge field magnitudes
