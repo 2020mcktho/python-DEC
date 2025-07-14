@@ -54,22 +54,34 @@ def ScalarLaplacianDirichlet():
 def ScalarLaplacianPML():
     # Solving the Laplacian, with a 0-form field defined on the vertices
     # Using a perfectly matched layer with increasing loss coefficient
+
+    # Solve eigenproblem in img, with eigenvalues=k0^2
+
+    # core is typically 1.25 microns in diameter
+
     lambda0 = 1.55e-6
     k0 = 2*np.pi/lambda0
 
-    fs = FibreSolution(n=20, core_radius=0.25, core_n=1.45, cladding_n=1.44)
+    # fs = FibreSolution(n=40, core_radius=0.25, core_n=1.45, cladding_n=1.44)
+    fs = FibreSolution(n=20, core_radius=0.25, core_n=3.5, cladding_n=1.0, max_imaginary_index=.1)
+    # fs = FibreSolution(n=20, core_radius=0.25, core_n=3., cladding_n=1.)
+    # Note: n=20 seems to be almost as good as n=80 for this fibre design
+
     fs.setup(epsilon_sc_index=1, merge_type="max", use_pml=True)
 
     A = fs.Hodges[0][1] @ fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # Hodge0_inv @ d0.T @ Hodge1 @ d0
     B = np.eye(fs.K[0].num_simplices)  # identity matrix, with same dimensions as A
 
-    eigenvalues, eigenvectors = fs.solve(A, B, mode_number=6)
-    n_eff = np.sqrt(k0 ** 2 / eigenvalues)
-    print(eigenvalues, n_eff)  # gives omega (or beta) values
+    eigenval_num = 20
+
+    eigenvalues, eigenvectors = fs.solve(A, B, mode_number=eigenval_num, search_near=1e-6)
+    n_eff = 1 / np.sqrt(eigenvalues)
+    print(eigenvalues, n_eff)
 
     fs.plot_n_shaded()
-    for m in range(6):
-        fs.plot_data_on_vertices_shaded(mode=m)
+    for m, eig in enumerate(eigenvalues):
+        if fs.cladding_n < n_eff[m] < fs.core_n or True:
+            fs.plot_data_on_vertices_shaded(mode=m)
 
 def Laplace_square():
     fs = FibreSolution(n=20, core_radius=0.0)

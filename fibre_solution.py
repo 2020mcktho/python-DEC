@@ -12,7 +12,7 @@ from my_generation_pydec import simplicial_grid_2d
 
 
 class FibreSolution:
-    def __init__(self, sc: simplicial_complex = None, n: int = 20, core_radius: float = 0.4, core_n: complex = 3., cladding_n: complex = 1., buffer_size: float = 0.1):
+    def __init__(self, sc: simplicial_complex = None, n: int = 20, core_radius: float = 0.4, core_n: complex = 3., cladding_n: complex = 1., buffer_size: float = 0.05, max_imaginary_index: float = .1):
         # if no simplicial complex mesh provided, generate a square mesh instead, using n divisions per side
         if sc is None:
             vertices, triangles = simplicial_grid_2d(n)
@@ -34,6 +34,7 @@ class FibreSolution:
         self.n_mat_inv = diags(self.n_vals)
         self.eigvals, self.eigvecs = np.array([]), np.array([])
         self.use_pml = False
+        self.max_imaginary_index = max_imaginary_index
         self.setup()
 
     def barycenter(self, sc_index: int = 1):
@@ -81,7 +82,7 @@ class FibreSolution:
         self.Hodges[sc_index][0] = self.K[sc_index].star @ (self.n_mat_inv ** 2)
         self.Hodges[sc_index][1] = self.K[sc_index].star_inv @ (self.n_mat ** 2)
 
-    def create_pml_vertex_buffer(self, max_imaginary_index: float = .1):
+    def create_pml_vertex_buffer(self):
         # max_imaginary_index controls the decay speed inside the buffer
 
         # find the points within the buffer zone at the edge (for the perfectly matched layer)
@@ -90,7 +91,7 @@ class FibreSolution:
         in_buffer = dist_to_edge < self.buffer_size
         # Add the complex loss part to the refractive index inside the Perfectly Matched Layer
         absorption = np.zeros_like(self.n_vals)
-        absorption[in_buffer] = 1j * (((1 - dist_to_edge[in_buffer] / self.buffer_size) ** 2) * max_imaginary_index)
+        absorption[in_buffer] = 1j * (((1 - dist_to_edge[in_buffer] / self.buffer_size) ** 2) * self.max_imaginary_index)
 
         self.n_vals += absorption  # add the complex part to the vertices inside the buffer
 
@@ -137,12 +138,12 @@ class FibreSolution:
         self.eigvals, self.eigvecs = eigvals, eigvecs_full
         return self.eigvals, self.eigvecs
 
-    def solve(self, A: np.ndarray, B: np.ndarray | None = None, mode_number: int = 1, eigval_pref: str = "LM", real_matrix: bool = True):
+    def solve(self, A: np.ndarray, B: np.ndarray | None = None, mode_number: int = 1, eigval_pref: str = "LM", real_matrix: bool = True, search_near: float = 1.):
         # Solve the reduced eigenproblem: A e = λ B e
         if real_matrix and not self.use_pml:  # when the matrix is known to be symmetric or Hermitian
-            eigvals, eigvecs = spla.eigsh(A, k=mode_number, M=B, sigma=1.0, which=eigval_pref)
+            eigvals, eigvecs = spla.eigsh(A, k=mode_number, M=B, sigma=search_near, which=eigval_pref)
         else:  # when the matrix may be complex
-            eigvals, eigvecs= spla.eigs(A, k=mode_number, M=B, sigma=1.0, which=eigval_pref)
+            eigvals, eigvecs= spla.eigs(A, k=mode_number, M=B, sigma=search_near, which=eigval_pref)
 
         # Sort the eigenpairs (sometimes eigsh returns unordered)
         idx = np.argsort(eigvals)
@@ -191,7 +192,7 @@ class FibreSolution:
         edge_centres = self.barycenter(1)
 
         plt.scatter(*edge_centres.T, c=abs_field, cmap='viridis', s=10)
-        plt.title("First Eigenmode on Unit Square (Dirichlet BC)")
+        plt.title(f"Mode {mode} Profile on edges")
         plt.axis('equal')
         plt.colorbar()
         plt.show()
@@ -234,7 +235,7 @@ class FibreSolution:
     def plot_data_on_vertices_shaded(self, mode: int = 0):
         abs_field = np.abs(self.eigvecs[:, mode])
         plt.tripcolor(*self.K.vertices.T, abs_field, shading='gouraud')
-        plt.title("Fundamental Mode Profile")
+        plt.title(f"Mode {mode} ({self.eigvals[mode]}) Profile")
         plt.colorbar()
         plt.show()
 
@@ -242,7 +243,7 @@ class FibreSolution:
         # Plotting field magnitudes on the vertices
         abs_field = np.abs(self.eigvecs[:, mode])
         plt.scatter(*self.K.vertices.T, c=abs_field, cmap='viridis', s=10)
-        plt.title("First Eigenmode on Unit Square (Dirichlet BC)")
+        plt.title(f"Mode {mode} Profile")
         plt.axis('equal')
         plt.colorbar()
         plt.show()
