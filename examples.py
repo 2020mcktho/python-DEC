@@ -58,12 +58,16 @@ def ScalarLaplacianPML():
     # Solve eigenproblem in img, with eigenvalues=k0^2
 
     # core is typically 1.25 microns in diameter
+    # For a geometry scaled by L: eigenvalues are scaled by 1/L^2 due to the del squared operator
+    core_diam = 1.25e-6
+    use_core_radius = 0.25
+    scale_factor = (use_core_radius * 2) / core_diam
 
     lambda0 = 1.55e-6
     k0 = 2*np.pi/lambda0
 
     # fs = FibreSolution(n=40, core_radius=0.25, core_n=1.45, cladding_n=1.44)
-    fs = FibreSolution(n=20, core_radius=0.25, core_n=3.5, cladding_n=1.0, max_imaginary_index=.1)
+    fs = FibreSolution(n=20, core_radius=use_core_radius, core_n=3.5, cladding_n=1.0, max_imaginary_index=.9)
     # fs = FibreSolution(n=20, core_radius=0.25, core_n=3., cladding_n=1.)
     # Note: n=20 seems to be almost as good as n=80 for this fibre design
 
@@ -72,10 +76,14 @@ def ScalarLaplacianPML():
     A = fs.Hodges[0][1] @ fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # Hodge0_inv @ d0.T @ Hodge1 @ d0
     B = np.eye(fs.K[0].num_simplices)  # identity matrix, with same dimensions as A
 
-    eigenval_num = 20
+    eigenval_num = 3
 
-    eigenvalues, eigenvectors = fs.solve(A, B, mode_number=eigenval_num, search_near=1e-6)
-    n_eff = 1 / np.sqrt(eigenvalues)
+    eigenvalues, eigenvectors = fs.solve(A, B, mode_number=eigenval_num, search_near=1.)
+    # scale the eigenvalues
+    # the scaled eigenvalues represent the wavenumber squared (lambda = k0^2)
+    # eigenvalues *= 1 / scale_factor ** 2
+    # k0_vals = np.sqrt(eigenvalues) / scale_factor
+    n_eff = np.sqrt(eigenvalues) / scale_factor
     print(eigenvalues, n_eff)
 
     fs.plot_n_shaded()
@@ -84,15 +92,16 @@ def ScalarLaplacianPML():
             fs.plot_data_on_vertices_shaded(mode=m)
 
 def Laplace_square():
-    fs = FibreSolution(n=20, core_radius=0.0)
+    fs = FibreSolution(n=20, core_radius=0.25)
     fs.setup(epsilon_sc_index=0)
 
     # Scalar Laplacian, matrices have dimensions of vertex number
     A = fs.Hodges[0][1] @ fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # Hodge0_inv @ d0.T @ Hodge1 @ d0
     B = np.eye(fs.K[0].num_simplices)  # identity matrix, with same dimensions as A
 
-    eigenvalues, eigenvectors = fs.solve_with_dirichlet(A, B, 0)
+    eigenvalues, eigenvectors = fs.solve_with_dirichlet(A, B, 0, mode_number=6)
     print(eigenvalues)  # gives omega (or beta) values
 
     fs.plot_n()
-    fs.plot_data_on_vertices(mode=0)
+    for mode in range(1):
+        fs.plot_data_on_vertices(mode=mode)

@@ -12,7 +12,7 @@ from my_generation_pydec import simplicial_grid_2d
 
 
 class FibreSolution:
-    def __init__(self, sc: simplicial_complex = None, n: int = 20, core_radius: float = 0.4, core_n: complex = 3., cladding_n: complex = 1., buffer_size: float = 0.05, max_imaginary_index: float = .1):
+    def __init__(self, sc: simplicial_complex = None, n: int = 20, core_radius: float = 0.4, core_n: complex = 3.5, cladding_n: complex = 1., buffer_size: float = 0.05, max_imaginary_index: float = .1):
         # if no simplicial complex mesh provided, generate a square mesh instead, using n divisions per side
         if sc is None:
             vertices, triangles = simplicial_grid_2d(n)
