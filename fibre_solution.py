@@ -1,6 +1,7 @@
 import numpy as np
 import scipy.sparse.linalg as spla
 from scipy.sparse import diags
+from scipy.interpolate import griddata
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from pydec import simplicial_complex
@@ -123,7 +124,7 @@ class FibreSolution:
         if real_matrix and not self.use_pml:  # when the matrix is known to be symmetric or Hermitian
             eigvals, eigvecs_reduced = spla.eigsh(A_reduced, k=mode_number, M=B_reduced, sigma=1.0, which=eigval_pref)
         else:  # when the matrix may be complex
-            eigvals, eigvecs_reduced = spla.eigs(A_reduced, k=mode_number, M=B_reduced, sigma=1.0, which=eigval_pref)
+            eigvals, eigvecs_reduced = spla.eigs(A_reduced.astype(complex), k=mode_number, M=B_reduced.astype(complex), sigma=1.0, which=eigval_pref)
 
         # Sort the eigenpairs (sometimes eigsh returns unordered)
         idx = np.argsort(eigvals)
@@ -143,7 +144,7 @@ class FibreSolution:
         if real_matrix and not self.use_pml:  # when the matrix is known to be symmetric or Hermitian
             eigvals, eigvecs = spla.eigsh(A, k=mode_number, M=B, sigma=search_near, which=eigval_pref)
         else:  # when the matrix may be complex
-            eigvals, eigvecs= spla.eigs(A, k=mode_number, M=B, sigma=search_near, which=eigval_pref)
+            eigvals, eigvecs= spla.eigs(A.astype(complex), k=mode_number, M=B.astype(complex), sigma=search_near, which=eigval_pref)
 
         # Sort the eigenpairs (sometimes eigsh returns unordered)
         idx = np.argsort(eigvals)
@@ -192,10 +193,7 @@ class FibreSolution:
         edge_centres = self.barycenter(1)
 
         plt.scatter(*edge_centres.T, c=abs_field, cmap='viridis', s=10)
-        plt.title(f"Mode {mode} Profile on edges")
-        plt.axis('equal')
         plt.colorbar()
-        plt.show()
 
         """
         from scipy.interpolate import RBFInterpolator
@@ -237,13 +235,65 @@ class FibreSolution:
         plt.tripcolor(*self.K.vertices.T, abs_field, shading='gouraud')
         plt.title(f"Mode {mode} ({self.eigvals[mode]}) Profile")
         plt.colorbar()
-        plt.show()
 
     def plot_data_on_vertices(self, mode: int = 0):
         # Plotting field magnitudes on the vertices
         abs_field = np.abs(self.eigvecs[:, mode])
         plt.scatter(*self.K.vertices.T, c=abs_field, cmap='viridis', s=10)
-        plt.title(f"Mode {mode} Profile")
-        plt.axis('equal')
+
         plt.colorbar()
+
+    def plot_streamlines(self, mode: int = 0):
+        abs_field = np.abs(self.eigvecs[:, mode])
+
+        # Define grid limits and resolution
+        x_min, y_min = self.K.vertices.min(axis=0)
+        x_max, y_max = self.K.vertices.max(axis=0)
+
+        grid_x, grid_y = np.meshgrid(
+            np.linspace(x_min, x_max, 200),
+            np.linspace(y_min, y_max, 200)
+        )
+
+        # Interpolate vector components to grid
+
+        U = griddata(self.K.vertices, abs_field[:, 0], (grid_x, grid_y), method='cubic', fill_value=0)
+        V = griddata(self.K.vertices, abs_field[:, 1], (grid_x, grid_y), method='cubic', fill_value=0)
+
+        # Plot streamlines
+
+        plt.figure(figsize=(8, 8))
+        plt.streamplot(grid_x, grid_y, U, V, density=1.5, linewidth=1, arrowsize=1, arrowstyle='->')
+
+    def plot_contours(self, mode: int = 0):
+        abs_field = np.abs(self.eigvecs[:, mode])
+
+        # Interpolate scalar field onto a regular grid
+
+        x_min, y_min = self.K.vertices.min(axis=0)
+        x_max, y_max = self.K.vertices.max(axis=0)
+
+        grid_x, grid_y = np.meshgrid(
+            np.linspace(x_min, x_max, 300),
+            np.linspace(y_min, y_max, 300)
+        )
+
+        abs_grid = griddata(self.K.vertices, abs_field, (grid_x, grid_y), method='cubic', fill_value=0)
+
+        # Plot contour lines (lines of constant field magnitude)
+
+        contours = plt.contour(grid_x, grid_y, abs_grid, levels=15, cmap='viridis')
+        # plt.clabel(contours, inline=True, fontsize=8)
+
+    def plot(self, mode: int = 0, plot_types: tuple = ("vertices",)):
+        if "vertices_shaded" in plot_types:
+            self.plot_data_on_vertices_shaded(mode)
+        if "edges_shaded" in plot_types:
+            self.plot_data_on_vertices_shaded(mode)
+        if "contours" in plot_types:
+            self.plot_contours(mode)
+
+        plt.title(f"Mode {mode}")
+        plt.axis('equal')
         plt.show()
+
