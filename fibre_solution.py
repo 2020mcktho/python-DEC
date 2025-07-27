@@ -4,19 +4,21 @@ from scipy.sparse import diags
 from scipy.interpolate import griddata
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+import matplotlib.tri as tri
 from pydec import simplicial_complex
 
 # Step 1: Create a simple 2D mesh (square domain)
 # In real use, you'd load a more realistic PCF mesh with air holes.
 # from pydec.mesh.generation import simplicial_grid_2d
-from my_generation_pydec import simplicial_grid_2d
+from my_generation_pydec import simplicial_grid_2d, disk_mesh, create_fibre_mesh, circular_geom_mesh
 
 
 class FibreSolution:
-    def __init__(self, sc: simplicial_complex = None, n: int = 20, core_radius: float = 0.4, core_n: complex = 3.5, cladding_n: complex = 1., buffer_size: float = 0.05, max_imaginary_index: float = .1):
+    def __init__(self, sc: simplicial_complex = None, mesh_size: float = 0.05, core_radius: float = 0.4, core_n: complex = 3.5, cladding_n: complex = 1., buffer_size: float = 0.05, max_imaginary_index: float = .1):
         # if no simplicial complex mesh provided, generate a square mesh instead, using n divisions per side
         if sc is None:
-            vertices, triangles = simplicial_grid_2d(n)
+            # vertices, triangles = simplicial_grid_2d(mesh_size)
+            vertices, triangles = create_fibre_mesh(mesh_size, core_radius)
             # Create simplicial complex
             self.K = simplicial_complex(vertices, triangles)
 
@@ -67,6 +69,7 @@ class FibreSolution:
         self.n_vals = np.ones(len(self.K.vertices), dtype=complex) * self.cladding_n
 
         barycenter_points = self.barycenter(0)
+        barycenter_points = self.K.vertices
         x, y = barycenter_points.T
         r = np.sqrt((x - 0.5) ** 2 + (y - 0.5) ** 2)
         self.n_vals[r < self.core_radius] = self.core_n
@@ -232,6 +235,7 @@ class FibreSolution:
 
     def plot_data_on_vertices_shaded(self, mode: int = 0):
         abs_field = np.abs(self.eigvecs[:, mode])
+        print(self.K.vertices.shape, abs_field.shape, self.K[0].simplices)
         plt.tripcolor(*self.K.vertices.T, abs_field, shading='gouraud')
         plt.title(f"Mode {mode} ({self.eigvals[mode]}) Profile")
         plt.colorbar()
@@ -285,6 +289,13 @@ class FibreSolution:
         contours = plt.contour(grid_x, grid_y, abs_grid, levels=15, cmap='viridis')
         # plt.clabel(contours, inline=True, fontsize=8)
 
+    def plot_mesh(self):
+        # Create triangulation
+        triang = tri.Triangulation(*self.K.vertices.T, self.K[2].simplices)
+
+        # Plot
+        plt.triplot(triang, color="black", linewidth=0.5)
+
     def plot(self, mode: int = 0, plot_types: tuple = ("vertices",)):
         if "vertices_shaded" in plot_types:
             self.plot_data_on_vertices_shaded(mode)
@@ -292,6 +303,8 @@ class FibreSolution:
             self.plot_data_on_vertices_shaded(mode)
         if "contours" in plot_types:
             self.plot_contours(mode)
+        if "mesh" in plot_types:
+            self.plot_mesh()
 
         plt.title(f"Mode {mode}")
         plt.axis('equal')

@@ -24,7 +24,7 @@ def EM_field():
     lambda0 = 1.55e-6
     k0 = 2 * np.pi / lambda0
 
-    fs = FibreSolution(n=60, core_radius=use_core_radius, core_n=3.5, cladding_n=1.0, buffer_size=0.5, max_imaginary_index=0.1)
+    fs = FibreSolution(mesh_size=0.05, core_radius=use_core_radius, core_n=3.5, cladding_n=1.0, buffer_size=0.5, max_imaginary_index=0.1)
     fs.setup(epsilon_sc_index=1, merge_type="average", use_pml=True)
 
     # Maxwell equation for E field  (combining grad(E) and grad(H))
@@ -53,7 +53,7 @@ def ScalarLaplacianDirichlet():
     lambda0 = 1.55e-6
     k0 = 2*np.pi/lambda0
 
-    fs = FibreSolution(n=10, core_radius=0.25, core_n=1.45, cladding_n=1.44)
+    fs = FibreSolution(mesh_size=0.1, core_radius=0.25, core_n=1.45, cladding_n=1.44)
     fs.setup(epsilon_sc_index=1, merge_type="average")
 
     A = fs.Hodges[0][1] @ fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # Hodge0_inv @ d0.T @ Hodge1 @ d0
@@ -82,9 +82,7 @@ def ScalarLaplacianPML():
     lambda0 = 1.55e-6
     k0 = 2*np.pi/lambda0
 
-    # fs = FibreSolution(n=40, core_radius=0.25, core_n=1.45, cladding_n=1.44)
-    fs = FibreSolution(n=20, core_radius=use_core_radius, core_n=3.5, cladding_n=1.0, max_imaginary_index=1.0)
-    # fs = FibreSolution(n=20, core_radius=0.25, core_n=3., cladding_n=1.)
+    fs = FibreSolution(mesh_size=0.05, core_radius=use_core_radius, core_n=3.5, cladding_n=1.0, max_imaginary_index=1.0)
     # Note: n=20 seems to be almost as good as n=80 for this fibre design
 
     fs.setup(epsilon_sc_index=1, merge_type="max", use_pml=True)
@@ -95,22 +93,27 @@ def ScalarLaplacianPML():
     eigenval_num = 7
 
     eigenvalues, eigenvectors = fs.solve(A, B, mode_number=eigenval_num, search_near=1.)
+    eigenvalues *= (scale_factor ** 2)
     # scale the eigenvalues
     # the scaled eigenvalues represent the wavenumber squared (lambda = k0^2)
     # eigenvalues *= 1 / scale_factor ** 2
     # k0_vals = np.sqrt(eigenvalues) / scale_factor
-    n_eff = np.sqrt(eigenvalues) / scale_factor / k0
+    n_eff = np.sqrt(eigenvalues) / k0
     print(eigenvalues, n_eff)
 
     fs.plot_n_shaded()
     for m, eig in enumerate(eigenvalues):
         if fs.cladding_n < n_eff[m] < fs.core_n or True:
-            fs.plot(m, ("vertices_shaded", "contours"))
+            fs.plot(m, ("vertices_shaded", "contours", "mesh"))
             # fs.plot_data_on_vertices_shaded(mode=m)
             # fs.plot_contours(mode=m)
 
+def InhomogeneousWaveEqn():
+    # RHS:
+    # - d0 @ ( Hodge1_inv @ (  ) )
+
 def Laplace_square():
-    fs = FibreSolution(n=20, core_radius=0.25)
+    fs = FibreSolution(mesh_size=0.05, core_radius=0.25)
     fs.setup(epsilon_sc_index=0)
 
     # Scalar Laplacian, matrices have dimensions of vertex number
