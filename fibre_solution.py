@@ -73,8 +73,23 @@ class FibreSolution:
 
             in1 = np.sqrt((v1[0] - 0.5) ** 2 + (v1[1] - 0.5) ** 2) < self.core_radius
             in2 = np.sqrt((v2[0] - 0.5) ** 2 + (v2[1] - 0.5) ** 2) < self.core_radius
-
             if in1 != in2:
+                boundary_edges.append(edge_ind)
+
+        return boundary_edges
+
+    def get_refractive_index_edge_boundary_indices(self):
+        edges = self.K[1].simplices
+
+        # find the edges that move from a core vertex to a cladding vertex
+        boundary_edges = []
+        for edge_ind, e in enumerate(edges):
+            v1, v2 = self.K.vertices[e[0]], self.K.vertices[e[1]]
+            # find the refractive index of both end points
+            eps1, eps2 = self.n_vals[e[0]], self.n_vals[e[1]]
+            # if the real parts of these indices are different, it is a boundary between the sections
+            if eps1.real != eps2.real:
+                print(eps1, eps2)
                 boundary_edges.append(edge_ind)
 
         return boundary_edges
@@ -142,7 +157,9 @@ class FibreSolution:
 
     def solve_with_dirichlet_core(self, A: np.ndarray, B: np.ndarray, boundary_type: int = 1, mode_number: int = 1, eigval_pref: str = "LM", real_matrix: bool = True):
         # identify the edges going from core to cladding vertices
-        indices = self.get_core_boundary_edge_indices()
+        indices1 = self.get_core_boundary_edge_indices()
+        indices = self.get_refractive_index_edge_boundary_indices()
+        print(len(indices1), len(indices))
         """
         for e in edges:
             A[e, :] = 0
@@ -158,11 +175,11 @@ class FibreSolution:
         if boundary_type == 0:
             indices = self.get_edge_vertex_indices(indices)
 
+        # set the mask to be False where the dirichlet boundaries are active
         mask[indices] = False
-        free = np.nonzero(mask)[0]
+        free = np.nonzero(mask)[0]  # find the indices of the non-dirichlet values
 
-        print(free, indices)
-        print(A[free, :])
+        # only take the rows and columns of the matrices corresponding to indices without Dirichlet boundaries
         A_reduced = A[free, :][:, free]
         B_reduced = B[free, :][:, free]
 
@@ -239,6 +256,11 @@ class FibreSolution:
         plt.colorbar()
         plt.show()
 
+    def plot_n_boundary(self):
+        boundary_edges = self.get_refractive_index_edge_boundary_indices()
+        boundary_points = self.get_edge_vertex_indices(boundary_edges)
+
+
     def plot_n(self):
         # plotting
         fig, ax = plt.subplots()
@@ -309,10 +331,27 @@ class FibreSolution:
         plt.show()
         """
 
+    def plot_data_shaded(self, mode: int = 0, simplex_type: int = 0):
+        centres = self.barycenter(simplex_type)
+        abs_field = np.abs(self.eigvecs[:, mode])
+        print(centres.shape, abs_field.shape)
+        # print(self.K.vertices.shape, abs_field.shape, self.K[0].simplices)
+        plt.tripcolor(*centres.T, abs_field, shading='gouraud')
+        plt.title(f"Mode {mode} ({self.eigvals[mode]}) Profile")
+        plt.colorbar()
+
     def plot_data_on_vertices_shaded(self, mode: int = 0):
         abs_field = np.abs(self.eigvecs[:, mode])
         # print(self.K.vertices.shape, abs_field.shape, self.K[0].simplices)
         plt.tripcolor(*self.K.vertices.T, abs_field, shading='gouraud')
+        plt.title(f"Mode {mode} ({self.eigvals[mode]}) Profile")
+        plt.colorbar()
+
+    def plot_data_on_edges_shaded(self, mode: int = 0):
+        abs_field = np.abs(self.eigvecs[:, mode])
+        edge_centres = self.barycenter(1)
+        # print(self.K.vertices.shape, abs_field.shape, self.K[0].simplices)
+        plt.tripcolor(*edge_centres.T, abs_field, shading='gouraud')
         plt.title(f"Mode {mode} ({self.eigvals[mode]}) Profile")
         plt.colorbar()
 
@@ -345,20 +384,20 @@ class FibreSolution:
         plt.figure(figsize=(8, 8))
         plt.streamplot(grid_x, grid_y, U, V, density=1.5, linewidth=1, arrowsize=1, arrowstyle='->')
 
-    def plot_contours(self, mode: int = 0):
+    def plot_contours(self, mode: int = 0, simplex_type: int = 0):
         abs_field = np.abs(self.eigvecs[:, mode])
+        centres = self.barycenter(simplex_type)
 
         # Interpolate scalar field onto a regular grid
-
-        x_min, y_min = self.K.vertices.min(axis=0)
-        x_max, y_max = self.K.vertices.max(axis=0)
+        x_min, y_min = centres.min(axis=0)
+        x_max, y_max = centres.max(axis=0)
 
         grid_x, grid_y = np.meshgrid(
             np.linspace(x_min, x_max, 300),
             np.linspace(y_min, y_max, 300)
         )
 
-        abs_grid = griddata(self.K.vertices, abs_field, (grid_x, grid_y), method='cubic', fill_value=0)
+        abs_grid = griddata(centres, abs_field, (grid_x, grid_y), method='cubic', fill_value=0)
 
         # Plot contour lines (lines of constant field magnitude)
 
@@ -372,13 +411,15 @@ class FibreSolution:
         # Plot
         plt.triplot(triang, color="black", linewidth=0.5)
 
-    def plot(self, mode: int = 0, plot_types: tuple = ("vertices",)):
+    def plot(self, mode: int = 0, plot_types: tuple = ("vertices",), simplex_type: int = 0):
+        if "shaded" in plot_types:
+            self.plot_data_shaded(mode, simplex_type)
         if "vertices_shaded" in plot_types:
             self.plot_data_on_vertices_shaded(mode)
         if "edges_shaded" in plot_types:
-            self.plot_data_on_vertices_shaded(mode)
+            self.plot_data_on_edges_shaded(mode)
         if "contours" in plot_types:
-            self.plot_contours(mode)
+            self.plot_contours(mode, simplex_type)
         if "mesh" in plot_types:
             self.plot_mesh()
 

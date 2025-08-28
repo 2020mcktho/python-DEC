@@ -24,8 +24,8 @@ def EM_field():
     lambda0 = 1.55e-6
     k0 = 2 * np.pi / lambda0
 
-    fs = FibreSolution(mesh_size=0.05, core_radius=use_core_radius, core_n=3.5, cladding_n=1.0, buffer_size=0.5, max_imaginary_index=0.1)
-    fs.setup(epsilon_sc_index=1, merge_type="average", use_pml=True)
+    fs = FibreSolution(mesh_size=0.05, core_radius=use_core_radius, core_n=3.5, cladding_n=1.0, buffer_size=0.1, max_imaginary_index=0.1)
+    fs.setup(epsilon_sc_index=1, merge_type="max", use_pml=True)
 
     # Maxwell equation for E field  (combining grad(E) and grad(H))
     A = fs.K[1].d.T @ fs.Hodges[2][0] @ fs.K[1].d  # d1.T @ Hodge2_inv @ d1
@@ -42,8 +42,9 @@ def EM_field():
 
     fs.plot_n_shaded()
     for m, eig in enumerate(eigenvalues):
-        if fs.cladding_n < n_eff[m] < fs.core_n or n_eff[m].real / n_eff[m].imag > 100.:
-            fs.plot_data_on_edges(mode=m)
+        if (fs.cladding_n < n_eff[m] < fs.core_n or n_eff[m].real / n_eff[m].imag > 100.) or True:
+            fs.plot(m, ("shaded", "contours", "mesh"), simplex_type=1)
+            # fs.plot_data_on_edges(mode=m)
 
 
 def ScalarLaplacianDirichlet():
@@ -53,13 +54,13 @@ def ScalarLaplacianDirichlet():
     lambda0 = 1.55e-6
     k0 = 2*np.pi/lambda0
 
-    fs = FibreSolution(mesh_size=0.025, core_radius=0.45, core_n=1.45, cladding_n=1.44)
+    fs = FibreSolution(mesh_size=0.025, core_radius=1.3, core_n=1.45, cladding_n=1.44, buffer_size=0.1)
     fs.setup(epsilon_sc_index=1, merge_type="max", use_pml=True)
 
     A = fs.Hodges[0][1] @ fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # Hodge0_inv @ d0.T @ Hodge1 @ d0
     B = np.eye(fs.K[0].num_simplices)  # identity matrix, with same dimensions as A
 
-    eigenvalues, eigenvectors = fs.solve_with_dirichlet_core(A, B, 0, mode_number=10)
+    eigenvalues, eigenvectors = fs.solve_with_dirichlet_core(A, B, 0, mode_number=50)
     n_eff = np.sqrt(k0 ** 2 / eigenvalues)
     print(eigenvalues, n_eff)  # gives omega (or beta) values
 
@@ -67,9 +68,14 @@ def ScalarLaplacianDirichlet():
     # for m in range(6):
     #     fs.plot_data_on_vertices_shaded(mode=m)
 
+    real_imag_ratio_requirement = 1e6
+
     for m, eig in enumerate(eigenvalues):
+        # check that the effective refractive index is between the core and cladding indices
         if fs.cladding_n < n_eff[m] < fs.core_n or True:
-            fs.plot(m, ("vertices_shaded", "contours", "mesh"))
+            # check that the real part of the eigenvalue is much greater than the imaginary part
+            if abs(eig.real / eig.imag) > real_imag_ratio_requirement:
+                fs.plot(m, ("shaded", "contours", "mesh"), simplex_type=0)
 
 def ScalarLaplacianPML():
     # Solving the Laplacian, with a 0-form field defined on the vertices
