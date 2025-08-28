@@ -17,8 +17,8 @@ class FibreSolution:
     def __init__(self, sc: simplicial_complex = None, mesh_size: float = 0.05, core_radius: float = 0.4, core_n: complex = 3.5, cladding_n: complex = 1., buffer_size: float = 0.05, max_imaginary_index: float = .1):
         # if no simplicial complex mesh provided, generate a square mesh instead, using n divisions per side
         if sc is None:
-            # vertices, triangles = simplicial_grid_2d(mesh_size)
-            vertices, triangles = create_fibre_mesh(mesh_size, core_radius)
+            vertices, triangles = simplicial_grid_2d(mesh_size)
+            # vertices, triangles = create_fibre_mesh(mesh_size, core_radius)
             # Create simplicial complex
             self.K = simplicial_complex(vertices, triangles)
 
@@ -62,6 +62,35 @@ class FibreSolution:
             boundary_ind.add(edge[1])
         internal_ind = set(range(len(self.K.vertices))) - boundary_ind
         return list(boundary_ind), list(internal_ind)
+
+    def get_core_boundary_edge_indices(self):
+        edges = self.K[1].simplices
+
+        # find the edges that move from a core vertex to a cladding vertex
+        boundary_edges = []
+        for edge_ind, e in enumerate(edges):
+            v1, v2 = self.K.vertices[e[0]], self.K.vertices[e[1]]
+
+            in1 = np.sqrt((v1[0] - 0.5) ** 2 + (v1[1] - 0.5) ** 2) < self.core_radius
+            in2 = np.sqrt((v2[0] - 0.5) ** 2 + (v2[1] - 0.5) ** 2) < self.core_radius
+
+            if in1 != in2:
+                boundary_edges.append(edge_ind)
+
+        return boundary_edges
+
+    def get_edge_vertex_indices(self, edge_indices):
+        vert_ind = []
+        # loop through the edge indices
+        for ind in edge_indices:
+            # find the vertices of the edge
+            v1, v2 = self.K[1].simplices[ind]
+            # add new vertices to the index list
+            if v1 not in vert_ind:
+                vert_ind.append(v1)
+            if v2 not in vert_ind:
+                vert_ind.append(v2)
+        return vert_ind
 
     def create_n_geometry(self):
         # create a matrix of refractive index values at each vertex
@@ -111,6 +140,53 @@ class FibreSolution:
         self.create_n_matrix(epsilon_sc_index, merge_type)
         self.apply_n_matrix(epsilon_sc_index)
 
+    def solve_with_dirichlet_core(self, A: np.ndarray, B: np.ndarray, boundary_type: int = 1, mode_number: int = 1, eigval_pref: str = "LM", real_matrix: bool = True):
+        # identify the edges going from core to cladding vertices
+        indices = self.get_core_boundary_edge_indices()
+        """
+        for e in edges:
+            A[e, :] = 0
+            A[e, e] = 1
+            B[e] = 0
+        """
+
+        # create a mask to filter out the vertices (or edges) with the Dirichlet condition applied
+        dimension = self.K[boundary_type].num_simplices  # number of points in the mesh of this type
+        mask = np.ones(dimension, dtype=bool)  # 1=no dirichlet, 0=dirichlet
+
+        # if using vertices rather than edges, make a list of all the edge end points
+        if boundary_type == 0:
+            indices = self.get_edge_vertex_indices(indices)
+
+        mask[indices] = False
+        free = np.nonzero(mask)[0]
+
+        print(free, indices)
+        print(A[free, :])
+        A_reduced = A[free, :][:, free]
+        B_reduced = B[free, :][:, free]
+
+        # Solve the reduced eigenproblem: A e = λ B e
+        # if a perfectly matched layer is being used, this will always require the complex solver
+        if real_matrix and not self.use_pml:  # when the matrix is known to be symmetric or Hermitian
+            eigvals, eigvecs_reduced = spla.eigsh(A_reduced, k=mode_number, M=B_reduced, sigma=1.0,
+                                                  which=eigval_pref)
+        else:  # when the matrix may be complex
+            eigvals, eigvecs_reduced = spla.eigs(A_reduced.astype(complex), k=mode_number,
+                                                 M=B_reduced.astype(complex), sigma=1.0, which=eigval_pref)
+
+        # Sort the eigenpairs (sometimes eigsh returns unordered)
+        idx = np.argsort(eigvals)
+        eigvals = eigvals[idx]
+        eigvecs_reduced = eigvecs_reduced[:, idx]
+
+        # Reconstruct full-length eigenvectors with zeros on boundary
+        eigvecs_full = np.zeros((dimension, mode_number), dtype=complex)
+        eigvecs_full[free, :] = eigvecs_reduced
+
+        self.eigvals, self.eigvecs = eigvals, eigvecs_full
+        return self.eigvals, self.eigvecs
+
     def solve_with_dirichlet(self, A: np.ndarray, B: np.ndarray, boundary_type: int = 1, mode_number: int = 1, eigval_pref: str = "LM", real_matrix: bool = True):
         # Find boundary and internal edges
         if boundary_type == 1:  # edges on the boundary
@@ -136,7 +212,7 @@ class FibreSolution:
 
         # Reconstruct full-length eigenvectors with zeros on boundary
         dimension = self.K[boundary_type].num_simplices  # number of points in the mesh of this type
-        eigvecs_full = np.zeros((dimension, mode_number))
+        eigvecs_full = np.zeros((dimension, mode_number), dtype=complex)
         eigvecs_full[internal_indices, :] = eigvecs_reduced
 
         self.eigvals, self.eigvecs = eigvals, eigvecs_full
@@ -235,7 +311,7 @@ class FibreSolution:
 
     def plot_data_on_vertices_shaded(self, mode: int = 0):
         abs_field = np.abs(self.eigvecs[:, mode])
-        print(self.K.vertices.shape, abs_field.shape, self.K[0].simplices)
+        # print(self.K.vertices.shape, abs_field.shape, self.K[0].simplices)
         plt.tripcolor(*self.K.vertices.T, abs_field, shading='gouraud')
         plt.title(f"Mode {mode} ({self.eigvals[mode]}) Profile")
         plt.colorbar()
