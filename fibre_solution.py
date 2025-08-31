@@ -14,7 +14,7 @@ from my_generation_pydec import simplicial_grid_2d, disk_mesh, create_fibre_mesh
 
 
 class FibreSolution:
-    def __init__(self, sc: simplicial_complex = None, mesh_size: float = 0.05, core_radius: float = 0.4, core_n: complex = 3.5, cladding_n: complex = 1., buffer_size: float = 0.05, max_imaginary_index: float = .1):
+    def __init__(self, sc: simplicial_complex = None, mesh_size: float = 0.05, core_radius: float = 0.4, rods: tuple[tuple[np.ndarray, float]] = (), core_n: complex = 3.5, cladding_n: complex = 1., rod_n: complex = 1., buffer_size: float = 0.05, max_imaginary_index: float = .1):
         # if no simplicial complex mesh provided, generate a square mesh instead, using n divisions per side
         if sc is None:
             vertices, triangles = simplicial_grid_2d(mesh_size)
@@ -24,8 +24,10 @@ class FibreSolution:
 
         # Example: circle in the center (high-index core)
         self.core_radius = core_radius
+        self.rods = rods
         self.core_n = core_n
         self.cladding_n = cladding_n
+        self.rod_n = rod_n
 
         self.buffer_size = buffer_size
 
@@ -71,6 +73,7 @@ class FibreSolution:
         for edge_ind, e in enumerate(edges):
             v1, v2 = self.K.vertices[e[0]], self.K.vertices[e[1]]
 
+            # loop through the rods and check those boundaries as well
             in1 = np.sqrt((v1[0] - 0.5) ** 2 + (v1[1] - 0.5) ** 2) < self.core_radius
             in2 = np.sqrt((v2[0] - 0.5) ** 2 + (v2[1] - 0.5) ** 2) < self.core_radius
             if in1 != in2:
@@ -117,6 +120,10 @@ class FibreSolution:
         x, y = barycenter_points.T
         r = np.sqrt((x - 0.5) ** 2 + (y - 0.5) ** 2)
         self.n_vals[r < self.core_radius] = self.core_n
+
+        for (rx, ry), rod_radius in self.rods:
+            r2 = np.sqrt((x - rx) ** 2 + (y - ry) ** 2)
+            self.n_vals[r2 < rod_radius] = self.rod_n
 
     def create_n_matrix(self, sc_index: int = 1, merge_type: str = "average"):
         if merge_type == "average":  # use the average of the surrounding points

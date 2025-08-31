@@ -54,13 +54,20 @@ def ScalarLaplacianDirichlet():
     lambda0 = 1.55e-6
     k0 = 2*np.pi/lambda0
 
-    fs = FibreSolution(mesh_size=0.025, core_radius=1.3, core_n=1.45, cladding_n=1.44, buffer_size=0.1)
+    # create surrounding rods
+    rods, rod_num, rod_rad, rod_dist = [], 6, 0.05, 0.3
+    for i in range(rod_num):
+        angle = 2 * np.pi * (i / rod_num)
+        x, y = rod_dist * np.cos(angle), rod_dist * np.sin(angle)
+        rods.append((np.array((x + 0.5, y + 0.5)), rod_rad))
+
+    fs = FibreSolution(mesh_size=0.02, core_radius=0.4, rods=rods, core_n=1.45, cladding_n=1.44, buffer_size=0.1)
     fs.setup(epsilon_sc_index=1, merge_type="max", use_pml=True)
 
     A = fs.Hodges[0][1] @ fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # Hodge0_inv @ d0.T @ Hodge1 @ d0
     B = np.eye(fs.K[0].num_simplices)  # identity matrix, with same dimensions as A
 
-    eigenvalues, eigenvectors = fs.solve_with_dirichlet_core(A, B, 0, mode_number=50)
+    eigenvalues, eigenvectors = fs.solve_with_dirichlet_core(A, B, 0, mode_number=10)
     n_eff = np.sqrt(k0 ** 2 / eigenvalues)
     print(eigenvalues, n_eff)  # gives omega (or beta) values
 
@@ -68,14 +75,14 @@ def ScalarLaplacianDirichlet():
     # for m in range(6):
     #     fs.plot_data_on_vertices_shaded(mode=m)
 
-    real_imag_ratio_requirement = 1e6
+    real_imag_ratio_requirement = 1e3
 
     for m, eig in enumerate(eigenvalues):
         # check that the effective refractive index is between the core and cladding indices
         if fs.cladding_n < n_eff[m] < fs.core_n or True:
             # check that the real part of the eigenvalue is much greater than the imaginary part
             if abs(eig.real / eig.imag) > real_imag_ratio_requirement:
-                fs.plot(m, ("shaded", "contours", "mesh"), simplex_type=0)
+                fs.plot(m, ("shaded",), simplex_type=0)
 
 def ScalarLaplacianPML():
     # Solving the Laplacian, with a 0-form field defined on the vertices
