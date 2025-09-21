@@ -1,6 +1,6 @@
 from fibre_solution import FibreSolution
 import numpy as np
-from scipy.sparse import diags
+from scipy.sparse import diags, identity
 
 # Build the generalized eigenvalue problem
 # We solve: A e = λ B e
@@ -55,17 +55,22 @@ def ScalarLaplacianDirichlet():
     k0 = 2*np.pi/lambda0
 
     # create surrounding rods
-    rods, rod_num, rod_rad, rod_dist = [], 6, 0.05, 0.3
-    for i in range(rod_num):
-        angle = 2 * np.pi * (i / rod_num)
-        x, y = rod_dist * np.cos(angle), rod_dist * np.sin(angle)
-        rods.append((np.array((x + 0.5, y + 0.5)), rod_rad))
+    rod_layers, rods_density, layer_dist = 3, 0.2, 0.2  # rod_density is the distance between each rod, layer_dist is the distance between layers
+    rods, rod_rad, rod_dist = [], 0.05, 0.3
+    for layer in range(rod_layers):
+        total_dist = rod_dist + layer_dist * layer
+        # find the number of rods required to maintain the minimum rod density (round up)
+        rod_num = int(np.ceil((2 * np.pi * total_dist) / rods_density))
+        for i in range(rod_num):
+            angle = 2 * np.pi * (i / rod_num)
+            x, y = total_dist * np.cos(angle), total_dist * np.sin(angle)
+            rods.append((np.array((x + 0.5, y + 0.5)), rod_rad))
 
-    fs = FibreSolution(mesh_size=0.02, core_radius=0.4, rods=rods, core_n=1.45, cladding_n=1.44, buffer_size=0.1)
+    fs = FibreSolution(mesh_size=0.02, core_radius=0.4, rods=rods, core_n=1.45, cladding_n=1.45, rod_n=1.44, buffer_size=0.1)
     fs.setup(epsilon_sc_index=1, merge_type="max", use_pml=True)
 
     A = fs.Hodges[0][1] @ fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # Hodge0_inv @ d0.T @ Hodge1 @ d0
-    B = np.eye(fs.K[0].num_simplices)  # identity matrix, with same dimensions as A
+    B = identity(fs.K[0].num_simplices, format="csr")  # identity matrix, with same dimensions as A
 
     eigenvalues, eigenvectors = fs.solve_with_dirichlet_core(A, B, 0, mode_number=10)
     n_eff = np.sqrt(k0 ** 2 / eigenvalues)
@@ -75,7 +80,7 @@ def ScalarLaplacianDirichlet():
     # for m in range(6):
     #     fs.plot_data_on_vertices_shaded(mode=m)
 
-    real_imag_ratio_requirement = 1e3
+    real_imag_ratio_requirement = 1e-3
 
     for m, eig in enumerate(eigenvalues):
         # check that the effective refractive index is between the core and cladding indices
@@ -105,7 +110,7 @@ def ScalarLaplacianPML():
     fs.setup(epsilon_sc_index=1, merge_type="max", use_pml=True)
 
     A = fs.Hodges[0][1] @ fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # Hodge0_inv @ d0.T @ Hodge1 @ d0
-    B = np.eye(fs.K[0].num_simplices)  # identity matrix, with same dimensions as A
+    B = identity(fs.K[0].num_simplices, format="csr")  # identity matrix, with same dimensions as A
 
     eigenval_num = 7
 
@@ -137,7 +142,7 @@ def Laplace_square():
 
     # Scalar Laplacian, matrices have dimensions of vertex number
     A = fs.Hodges[0][1] @ fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # Hodge0_inv @ d0.T @ Hodge1 @ d0
-    B = np.eye(fs.K[0].num_simplices)  # identity matrix, with same dimensions as A
+    B = identity(fs.K[0].num_simplices, format="csr")  # identity matrix, with same dimensions as A
 
     eigenvalues, eigenvectors = fs.solve_with_dirichlet(A, B, 0, mode_number=6)
     print(eigenvalues)  # gives omega (or beta) values
