@@ -6,6 +6,31 @@ from scipy.sparse import diags, identity
 # We solve: A e = λ B e
 # Note: the @ symbol does matrix multiplication
 
+epsilon_0 = 8.8541878188e-12  # Fm^-1
+
+
+def calc_silica_epsilon_rel(lambda0: float):
+    # use the Sellmeier equation to calculate epsilon from known coefficients for Silica
+    # coefficients from Malitson, 1965
+
+    # lambda0 is given in metres, then converted to micrometres
+    lambda0_um = lambda0 / 1e-6
+
+    B1, C1 = 0.6961663, 0.0684043 ** 2
+    B2, C2 = 0.4079426, 0.1162414 ** 2
+    B3, C3 = 0.8974794, 9.896161 ** 2
+
+    lam2 = lambda0_um ** 2  # lambda squared
+
+    n_squared = (1
+          + (B1 * lam2) / (lam2 - C1)
+          + (B2 * lam2) / (lam2 - C2)
+          + (B3 * lam2) / (lam2 - C3))
+
+    print(n_squared, lam2)
+
+    return n_squared
+
 def EM_field():
     # Electric field wave solution, in the frequency domain
     # curl(curl(E)) = star[d(star dE)] = star d star d E
@@ -51,6 +76,8 @@ def ScalarLaplacianDirichlet():
     # Solving the Laplacian, with a 0-form field defined on the vertices
     # Using Dirichlet boundary conditions
 
+    # Note: a Dirichlet boundary implies a perfect electrical conductor, so will force an artificial node at the boundary
+
     lambda0 = 1.55e-6
     k0 = 2*np.pi/lambda0
 
@@ -66,7 +93,11 @@ def ScalarLaplacianDirichlet():
             x, y = total_dist * np.cos(angle), total_dist * np.sin(angle)
             rods.append((np.array((x + 0.5, y + 0.5)), rod_rad))
 
-    fs = FibreSolution(mesh_size=0.02, core_radius=0.4, rods=rods, core_n=1.45, cladding_n=1.45, rod_n=1.44, buffer_size=0.1)
+    # calculate epsilon value (assuming Silica)
+    ref_ind = np.sqrt(calc_silica_epsilon_rel(lambda0))
+    print(ref_ind)
+
+    fs = FibreSolution(mesh_size=0.02, core_radius=0.4, rods=rods, core_n=ref_ind, cladding_n=ref_ind, rod_n=1., buffer_size=0.1)
     fs.setup(epsilon_sc_index=1, merge_type="max", use_pml=True)
 
     A = fs.Hodges[0][1] @ fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # Hodge0_inv @ d0.T @ Hodge1 @ d0
