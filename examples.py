@@ -132,7 +132,7 @@ def ScalarLaplacianPMLBeta():
     ref_ind = np.sqrt(calc_silica_epsilon_rel(lambda0))
     print(ref_ind)
 
-    fs = FibreSolution(mesh_size=0.02, core_radius=0.3, core_n=ref_ind, cladding_n=1., buffer_size=0.1)
+    fs = FibreSolution(mesh_size=0.02, core_radius=0.25, core_n=ref_ind, cladding_n=1., buffer_size=0.1)
     fs.setup(epsilon_sc_index=0, mu_sc_index=1, merge_type="max", use_pml=True)
 
     A1 = fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # d1.T @ Hodge2_inv @ d1
@@ -142,7 +142,8 @@ def ScalarLaplacianPMLBeta():
 
     eigval_guess = (ref_ind * k0) ** 2
     eigval_guess = 1.+.1j
-    eigenvalues, eigenvectors = fs.solve(A, B, mode_number=4, search_near=eigval_guess)
+    mode_num = 1
+    eigenvalues, eigenvectors = fs.solve(A, B, mode_number=mode_num, search_near=eigval_guess)
     # eigenvalues are beta squared values
 
     beta = np.sqrt(eigenvalues)
@@ -160,7 +161,7 @@ def ScalarLaplacianPMLBeta():
         if fs.cladding_n < n_eff[m] < fs.core_n or True:
             # check that the real part of the eigenvalue is much greater than the imaginary part
             if abs(eig.real / eig.imag) > real_imag_ratio_requirement:
-                fs.plot(m, ("shaded",), simplex_type=0)
+                fs.plot(m, ("shaded", "cross_section",), simplex_type=0)
 
 def ScalarLaplacianPMLSolid():
     # Solving the Laplacian, with a 0-form field defined on the vertices

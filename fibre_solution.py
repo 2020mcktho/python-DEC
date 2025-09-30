@@ -351,7 +351,6 @@ class FibreSolution:
     def plot_data_shaded(self, mode: int = 0, simplex_type: int = 0):
         centres = self.barycenter(simplex_type)
         abs_field = np.abs(self.eigvecs[:, mode])
-        print(centres.shape, abs_field.shape)
         # print(self.K.vertices.shape, abs_field.shape, self.K[0].simplices)
         plt.tripcolor(*centres.T, abs_field, shading='gouraud')
         plt.title(f"Mode {mode} ({self.eigvals[mode]}) Profile")
@@ -428,6 +427,20 @@ class FibreSolution:
         # Plot
         plt.triplot(triang, color="black", linewidth=0.5)
 
+    def plot_cross_section(self, mode: int, simplex_type: int):
+        centres = self.barycenter(simplex_type)
+        abs_field = np.abs(self.eigvecs[:, mode])
+
+        triang = tri.Triangulation(*centres.T)
+
+        x_line = np.linspace(0., 1., 100)
+        y_line = 0 * (x_line) + .5
+        interp = tri.LinearTriInterpolator(triang, abs_field)
+        abs_field_line = interp(x_line, y_line)
+
+        plt.plot(x_line, abs_field_line)
+        plt.show()
+
     def plot(self, mode: int = 0, plot_types: tuple = ("vertices",), simplex_type: int = 0):
         if "shaded" in plot_types:
             self.plot_data_shaded(mode, simplex_type)
@@ -444,4 +457,7 @@ class FibreSolution:
         plt.title(f"Mode {mode} ({eigval})")
         plt.axis('equal')
         plt.show()
+
+        if "cross_section" in plot_types:
+            self.plot_cross_section(mode, simplex_type)
 
