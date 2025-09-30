@@ -1,5 +1,6 @@
-from numpy import zeros, resize, arange, ravel, concatenate, matrix, transpose, int32, cos, sin, pi
+from numpy import array, zeros, resize, arange, ravel, concatenate, matrix, transpose, int32, cos, sin, pi, ceil, sqrt
 import pygmsh
+from scipy.spatial import Delaunay
 
 
 def simplicial_grid_2d(mesh_size):
@@ -44,6 +45,64 @@ def create_fibre_mesh(mesh_size, core_radius):
     print("First few triangles:", triangle_list[:5])
 
     return vertex_list, triangle_list
+
+
+def create_fibre_mesh_delaunay(mesh_size, core_radius):
+    mesh_points = []
+
+    # create a regular square mesh from 0-1
+    for x in arange(0., 1. + mesh_size, mesh_size):
+        for y in arange(0., 1. + mesh_size, mesh_size):
+            mesh_points.append((x, y))
+
+    # create points on the surface of the core circle
+    centre_circle = (.5, .5)
+    circle_circ = 2 * pi * core_radius
+    n_circle_points = int(ceil(circle_circ / mesh_size))
+    for i in range(n_circle_points):
+        theta = 2 * pi * i / n_circle_points
+        x = centre_circle[0] + core_radius * cos(theta)
+        y = centre_circle[1] + core_radius * sin(theta)
+        if (x, y) not in mesh_points:
+            mesh_points.append((x, y))
+
+    mesh_points = array(mesh_points)
+    tri = Delaunay(mesh_points)
+    simplices = tri.simplices
+
+    return mesh_points, simplices
+
+
+def create_circular_fibre_mesh_delaunay(mesh_size, core_radius):
+    mesh_points = [(.5, .5)]  # start with the centre point in the list
+
+    # create points around the boundary box
+    for x in arange(0., 1. + mesh_size, mesh_size):
+        for y in arange(0., 1. + mesh_size, mesh_size):
+            if x == 0 or x == 1 or y == 0 or y == 1:
+                mesh_points.append((x, y))
+
+    # create circles going outwards, with one circle on the core boundary
+
+    # create points on the surface of the core circle
+    centre_circle = (.5, .5)
+    # diagonal distance to corner = sqrt(.5**2 + .5**2) = .5sqrt(2)
+    mesh_size *= 2
+    for circle_radius in arange(mesh_size, .5 * sqrt(2), mesh_size):
+        circle_circ = 2 * pi * circle_radius
+        n_circle_points = int(ceil(circle_circ / mesh_size))
+        for i in range(n_circle_points):
+            theta = 2 * pi * i / n_circle_points
+            x = centre_circle[0] + circle_radius * cos(theta)
+            y = centre_circle[1] + circle_radius * sin(theta)
+            if 0 <= x <= 1 and 0 <= y <= 1:
+                mesh_points.append((x, y))
+
+    mesh_points = array(mesh_points)
+    tri = Delaunay(mesh_points)
+    simplices = tri.simplices
+
+    return mesh_points, simplices
 
 
 def disk_mesh(mesh_size):
@@ -126,9 +185,11 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
     # points, triangles = circular_geom_mesh(0.1, 0.25)
-    points, triangles = create_fibre_mesh(0.1, .25)
+    # points, triangles = create_fibre_mesh(0.1, .25)
+    # points, triangles = create_fibre_mesh_delaunay(0.1, .25)
+    points, triangles = create_circular_fibre_mesh_delaunay(0.05, .25)
 
     plt.triplot(*points.T, triangles, linewidth=0.3)
     plt.gca().set_aspect("equal")
-    plt.title("Fiber-Optimized Mesh with Radial Grading")
+    plt.title("Triangulated mesh")
     plt.show()

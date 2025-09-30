@@ -125,28 +125,36 @@ def ScalarLaplacianPMLBeta():
 
     # Note: a Dirichlet boundary implies a perfect electrical conductor, so will force an artificial node at the boundary
 
-    lambda0 = 1.55e-6
+    lambda0 = .5e-6
     k0 = 2*np.pi/lambda0
 
     # calculate epsilon value (assuming Silica)
     ref_ind = np.sqrt(calc_silica_epsilon_rel(lambda0))
     print(ref_ind)
 
-    fs = FibreSolution(mesh_size=0.02, core_radius=0.25, core_n=ref_ind, cladding_n=1., buffer_size=0.1)
+    core_diam = 1.25e-6
+    use_core_radius = 0.25
+    scale_factor = (use_core_radius * 2) / core_diam  # actual dims x scale factor = sim dims
+
+    k0_scaled = k0 / scale_factor
+
+    fs = FibreSolution(mesh_size=0.02, core_radius=use_core_radius, core_n=ref_ind, cladding_n=1., buffer_size=0.1)
     fs.setup(epsilon_sc_index=0, mu_sc_index=1, merge_type="max", use_pml=True)
 
     A1 = fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # d1.T @ Hodge2_inv @ d1
-    A2 = k0 ** 2 * fs.Hodges[0][0]
+    A2 = k0_scaled ** 2 * fs.Hodges[0][0]
     A = A1 + A2
     B = fs.K[0].star  # Hodge0
 
-    eigval_guess = (ref_ind * k0) ** 2
-    eigval_guess = 1.+.1j
-    mode_num = 1
+    eigval_guess = (.7 * k0 / scale_factor) ** 2 + .1j
+    print(eigval_guess)
+    # eigval_guess = 1.+.1j
+    mode_num = 5
     eigenvalues, eigenvectors = fs.solve(A, B, mode_number=mode_num, search_near=eigval_guess)
     # eigenvalues are beta squared values
 
-    beta = np.sqrt(eigenvalues)
+    beta_sim = np.sqrt(eigenvalues)
+    beta = beta_sim * scale_factor
     n_eff = beta / k0
     print(eigenvalues, n_eff)  # gives omega (or beta) values
 
@@ -161,7 +169,7 @@ def ScalarLaplacianPMLBeta():
         if fs.cladding_n < n_eff[m] < fs.core_n or True:
             # check that the real part of the eigenvalue is much greater than the imaginary part
             if abs(eig.real / eig.imag) > real_imag_ratio_requirement:
-                fs.plot(m, ("shaded", "cross_section",), simplex_type=0)
+                fs.plot(m, ("mesh", "shaded", "cross_section",), simplex_type=0)
 
 def ScalarLaplacianPMLSolid():
     # Solving the Laplacian, with a 0-form field defined on the vertices

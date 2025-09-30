@@ -10,17 +10,19 @@ from pydec import simplicial_complex
 # Step 1: Create a simple 2D mesh (square domain)
 # In real use, you'd load a more realistic PCF mesh with air holes.
 # from pydec.mesh.generation import simplicial_grid_2d
-from my_generation_pydec import simplicial_grid_2d, disk_mesh, create_fibre_mesh, circular_geom_mesh
+from my_generation_pydec import simplicial_grid_2d, create_circular_fibre_mesh_delaunay, create_fibre_mesh_delaunay
 
 
 epsilon_0 = 8.8541878188e-12  # Fm^-1
 mu_0 = 1.25663706127e-6  # NA^-2
 
 class FibreSolution:
-    def __init__(self, sc: simplicial_complex = None, mesh_size: float = 0.05, core_radius: float = 0.4, rods: tuple[tuple[np.ndarray, float]] = (), core_n: complex = 3.5, cladding_n: complex = 1., rod_n: complex = 1., buffer_size: float = 0.05, max_imaginary_index: float = .1):
+    def __init__(self, sc: simplicial_complex = None, mesh_size: float = 0.05, scale_factor: float = 1., core_radius: float = 0.4, rods: tuple[tuple[np.ndarray, float]] = (), core_n: complex = 3.5, cladding_n: complex = 1., rod_n: complex = 1., buffer_size: float = 0.05, max_imaginary_index: float = .1):
         # if no simplicial complex mesh provided, generate a square mesh instead, using n divisions per side
         if sc is None:
             vertices, triangles = simplicial_grid_2d(mesh_size)
+            # vertices, triangles = create_circular_fibre_mesh_delaunay(mesh_size, core_radius)
+            # vertices, triangles = create_fibre_mesh_delaunay(mesh_size, core_radius)
             # vertices, triangles = create_fibre_mesh(mesh_size, core_radius)
             # Create simplicial complex
             self.K = simplicial_complex(vertices, triangles)
@@ -351,8 +353,26 @@ class FibreSolution:
     def plot_data_shaded(self, mode: int = 0, simplex_type: int = 0):
         centres = self.barycenter(simplex_type)
         abs_field = np.abs(self.eigvecs[:, mode])
+
+        triang = tri.Triangulation(*centres.T)
+
+        grid_step = 0.01
+        xs = np.arange(0, 1 + grid_step, grid_step)
+        ys = np.arange(0, 1 + grid_step, grid_step)
+
+        # Create grid: x = [[0, 0.1, ...], [0, 0.1, ...]], y = [[0, 0, ...], [0.1, 0.1, ...]]
+        x, y = np.meshgrid(xs, ys)
+        x_flat, y_flat = x.ravel(), y.ravel()
+
+        # Flatten into list of (x, y) points
+        # points = np.column_stack([X.ravel(), Y.ravel()])
+        interp = tri.LinearTriInterpolator(triang, abs_field)
+        abs_field_vals = interp(x_flat, y_flat)
+
+        # centres = self.barycenter(simplex_type)
+        # abs_field = np.abs(self.eigvecs[:, mode])
         # print(self.K.vertices.shape, abs_field.shape, self.K[0].simplices)
-        plt.tripcolor(*centres.T, abs_field, shading='gouraud')
+        plt.tripcolor(x_flat, y_flat, abs_field_vals, shading='gouraud')
         plt.title(f"Mode {mode} ({self.eigvals[mode]}) Profile")
         plt.colorbar()
 
@@ -439,6 +459,7 @@ class FibreSolution:
         abs_field_line = interp(x_line, y_line)
 
         plt.plot(x_line, abs_field_line)
+        plt.vlines([0.5 - self.core_radius, 0.5 + self.core_radius], 0, max(abs_field_line), linestyles='dashed', label="core boundary")
         plt.show()
 
     def plot(self, mode: int = 0, plot_types: tuple = ("vertices",), simplex_type: int = 0):
