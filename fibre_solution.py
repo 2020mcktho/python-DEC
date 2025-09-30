@@ -13,6 +13,9 @@ from pydec import simplicial_complex
 from my_generation_pydec import simplicial_grid_2d, disk_mesh, create_fibre_mesh, circular_geom_mesh
 
 
+epsilon_0 = 8.8541878188e-12  # Fm^-1
+mu_0 = 1.25663706127e-6  # NA^-2
+
 class FibreSolution:
     def __init__(self, sc: simplicial_complex = None, mesh_size: float = 0.05, core_radius: float = 0.4, rods: tuple[tuple[np.ndarray, float]] = (), core_n: complex = 3.5, cladding_n: complex = 1., rod_n: complex = 1., buffer_size: float = 0.05, max_imaginary_index: float = .1):
         # if no simplicial complex mesh provided, generate a square mesh instead, using n divisions per side
@@ -31,9 +34,9 @@ class FibreSolution:
 
         self.buffer_size = buffer_size
 
-        self.Hodges = [[self.K[0].star, self.K[0].star_inv],
-                       [self.K[1].star, self.K[1].star_inv],
-                       [self.K[2].star, self.K[2].star_inv]]
+        self.Hodges = [[self.K[0].star.astype(complex), self.K[0].star_inv.astype(complex)],
+                       [self.K[1].star.astype(complex), self.K[1].star_inv.astype(complex)],
+                       [self.K[2].star.astype(complex), self.K[2].star_inv.astype(complex)]]
         self.n_vals = np.array([1], dtype=complex)
         self.n_mat = diags(self.n_vals)
         self.n_mat_inv = diags(self.n_vals)
@@ -133,9 +136,14 @@ class FibreSolution:
             self.n_mat = diags(np.max(self.n_vals[self.K[sc_index].simplices], axis=1))
             self.n_mat_inv = diags(1 / np.max(self.n_vals[self.K[sc_index].simplices], axis=1))
 
-    def apply_n_matrix(self, sc_index: int = 1):
+    def apply_n_matrix(self, sc_index: int = 0):
         self.Hodges[sc_index][0] = self.K[sc_index].star @ (self.n_mat_inv ** 2)
         self.Hodges[sc_index][1] = self.K[sc_index].star_inv @ (self.n_mat ** 2)
+
+    def apply_mu(self, sc_index: int = 1):
+        use_mu = 1  # don't use mu_0 here?
+        self.Hodges[sc_index][0] = (self.K[sc_index].star * 1 / use_mu).astype(complex)
+        self.Hodges[sc_index][1] = (self.K[sc_index].star_inv * use_mu).astype(complex)
 
     def create_pml_vertex_buffer(self):
         # max_imaginary_index controls the decay speed inside the buffer
@@ -150,7 +158,7 @@ class FibreSolution:
 
         self.n_vals += absorption  # add the complex part to the vertices inside the buffer
 
-    def setup(self, epsilon_sc_index: int = 0, merge_type: str = "average", use_pml: bool = False):
+    def setup(self, epsilon_sc_index: int = 0, mu_sc_index: int = 1, merge_type: str = "average", use_pml: bool = False):
         # Set up the fibre geometry and different sections of refractive index
         # Also set up the perfectly matched layer, if it is being used
 
@@ -160,7 +168,9 @@ class FibreSolution:
         if self.use_pml:
             self.create_pml_vertex_buffer()
         self.create_n_matrix(epsilon_sc_index, merge_type)
+
         self.apply_n_matrix(epsilon_sc_index)
+        self.apply_mu(mu_sc_index)
 
     def solve_with_dirichlet_core(self, A: np.ndarray, B: np.ndarray, boundary_type: int = 1, mode_number: int = 1, eigval_pref: str = "LM", real_matrix: bool = True):
         # identify the edges going from core to cladding vertices
@@ -242,12 +252,12 @@ class FibreSolution:
         self.eigvals, self.eigvecs = eigvals, eigvecs_full
         return self.eigvals, self.eigvecs
 
-    def solve(self, A: np.ndarray, B: np.ndarray | None = None, mode_number: int = 1, eigval_pref: str = "LM", real_matrix: bool = True, search_near: float = 1.):
+    def solve(self, A: np.ndarray, B: np.ndarray | None = None, mode_number: int = 1, eigval_pref: str = "LM", real_matrix: bool = True, search_near: complex = 1.+0.j):
         # Solve the reduced eigenproblem: A e = λ B e
         if real_matrix and not self.use_pml:  # when the matrix is known to be symmetric or Hermitian
             eigvals, eigvecs = spla.eigsh(A, k=mode_number, M=B, sigma=search_near, which=eigval_pref)
         else:  # when the matrix may be complex
-            eigvals, eigvecs= spla.eigs(A.astype(complex), k=mode_number, M=B.astype(complex), sigma=search_near, which=eigval_pref)
+            eigvals, eigvecs= spla.eigs(A, k=mode_number, M=B, sigma=search_near, which=eigval_pref)
 
         # Sort the eigenpairs (sometimes eigsh returns unordered)
         idx = np.argsort(eigvals)
@@ -430,7 +440,8 @@ class FibreSolution:
         if "mesh" in plot_types:
             self.plot_mesh()
 
-        plt.title(f"Mode {mode}")
+        eigval = self.eigvals[mode]
+        plt.title(f"Mode {mode} ({eigval})")
         plt.axis('equal')
         plt.show()
 

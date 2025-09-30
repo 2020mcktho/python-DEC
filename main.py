@@ -1,7 +1,8 @@
-from examples import Laplace_square, EM_field, ScalarLaplacianDirichlet, ScalarLaplacianPML, InhomogeneousWaveEqn
+from examples import Laplace_square, EM_field, ScalarLaplacianDirichletRods, ScalarLaplacianPMLSolid, ScalarLaplacianPMLBeta, InhomogeneousWaveEqn
 
 # Laplace_square()
 # EM_field()
-ScalarLaplacianDirichlet()
-# ScalarLaplacianPML()
+# ScalarLaplacianDirichletRods()
+ScalarLaplacianPMLBeta()
+# ScalarLaplacianPMLSolid()
 # InhomogeneousWaveEqn()

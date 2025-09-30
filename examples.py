@@ -6,8 +6,6 @@ from scipy.sparse import diags, identity
 # We solve: A e = λ B e
 # Note: the @ symbol does matrix multiplication
 
-epsilon_0 = 8.8541878188e-12  # Fm^-1
-
 
 def calc_silica_epsilon_rel(lambda0: float):
     # use the Sellmeier equation to calculate epsilon from known coefficients for Silica
@@ -72,7 +70,7 @@ def EM_field():
             # fs.plot_data_on_edges(mode=m)
 
 
-def ScalarLaplacianDirichlet():
+def ScalarLaplacianDirichletRods():
     # Solving the Laplacian, with a 0-form field defined on the vertices
     # Using Dirichlet boundary conditions
 
@@ -120,7 +118,51 @@ def ScalarLaplacianDirichlet():
             if abs(eig.real / eig.imag) > real_imag_ratio_requirement:
                 fs.plot(m, ("shaded",), simplex_type=0)
 
-def ScalarLaplacianPML():
+def ScalarLaplacianPMLBeta():
+    # Solving the Laplacian, with a 0-form field defined on the vertices
+    # Using Dirichlet boundary conditions
+    # Eigenvalues can be interpreted as Beta values for propagation constant
+
+    # Note: a Dirichlet boundary implies a perfect electrical conductor, so will force an artificial node at the boundary
+
+    lambda0 = 1.55e-6
+    k0 = 2*np.pi/lambda0
+
+    # calculate epsilon value (assuming Silica)
+    ref_ind = np.sqrt(calc_silica_epsilon_rel(lambda0))
+    print(ref_ind)
+
+    fs = FibreSolution(mesh_size=0.02, core_radius=0.3, core_n=ref_ind, cladding_n=1., buffer_size=0.1)
+    fs.setup(epsilon_sc_index=0, mu_sc_index=1, merge_type="max", use_pml=True)
+
+    A1 = fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # d1.T @ Hodge2_inv @ d1
+    A2 = k0 ** 2 * fs.Hodges[0][0]
+    A = A1 + A2
+    B = fs.K[0].star  # Hodge0
+
+    eigval_guess = (ref_ind * k0) ** 2
+    eigval_guess = 1.+.1j
+    eigenvalues, eigenvectors = fs.solve(A, B, mode_number=4, search_near=eigval_guess)
+    # eigenvalues are beta squared values
+
+    beta = np.sqrt(eigenvalues)
+    n_eff = beta / k0
+    print(eigenvalues, n_eff)  # gives omega (or beta) values
+
+    fs.plot_n_shaded()
+    # for m in range(6):
+    #     fs.plot_data_on_vertices_shaded(mode=m)
+
+    real_imag_ratio_requirement = 0
+
+    for m, eig in enumerate(eigenvalues):
+        # check that the effective refractive index is between the core and cladding indices
+        if fs.cladding_n < n_eff[m] < fs.core_n or True:
+            # check that the real part of the eigenvalue is much greater than the imaginary part
+            if abs(eig.real / eig.imag) > real_imag_ratio_requirement:
+                fs.plot(m, ("shaded",), simplex_type=0)
+
+def ScalarLaplacianPMLSolid():
     # Solving the Laplacian, with a 0-form field defined on the vertices
     # Using a perfectly matched layer with increasing loss coefficient
 
@@ -129,21 +171,22 @@ def ScalarLaplacianPML():
     # core is typically 1.25 microns in diameter
     # For a geometry scaled by L: eigenvalues are scaled by 1/L^2 due to the del squared operator
     core_diam = 1.25e-6
-    use_core_radius = 0.25
+    use_core_radius = 0.3
     scale_factor = (use_core_radius * 2) / core_diam
 
     lambda0 = 1.55e-6
     k0 = 2*np.pi/lambda0
 
-    fs = FibreSolution(mesh_size=0.05, core_radius=use_core_radius, core_n=3.5, cladding_n=1.0, max_imaginary_index=1.0)
-    # Note: n=20 seems to be almost as good as n=80 for this fibre design
+    # solid core setup
+    fs = FibreSolution(mesh_size=0.02, core_radius=use_core_radius, core_n=3.5, cladding_n=1, max_imaginary_index=1.0)
 
-    fs.setup(epsilon_sc_index=1, merge_type="max", use_pml=True)
+    fs.setup(epsilon_sc_index=0, mu_sc_index=1, merge_type="max", use_pml=True)
 
     A = fs.Hodges[0][1] @ fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # Hodge0_inv @ d0.T @ Hodge1 @ d0
-    B = identity(fs.K[0].num_simplices, format="csr")  # identity matrix, with same dimensions as A
+    B = identity(fs.K[0].num_simplices, format="csr", dtype=complex)  # identity matrix, with same dimensions as A
+    # B = None
 
-    eigenval_num = 7
+    eigenval_num = 5
 
     eigenvalues, eigenvectors = fs.solve(A, B, mode_number=eigenval_num, search_near=1.)
     eigenvalues *= (scale_factor ** 2)
