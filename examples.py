@@ -40,7 +40,7 @@ def EM_field():
     # star1.T (dual 1-form) -> 1-form
 
     core_diam = 1.25e-6
-    use_core_radius = 0.25
+    use_core_radius = 0.4
     scale_factor = (use_core_radius * 2) / core_diam
     scale_factor = 1.
 
@@ -118,6 +118,22 @@ def ScalarLaplacianDirichletRods():
             if abs(eig.real / eig.imag) > real_imag_ratio_requirement:
                 fs.plot(m, ("shaded",), simplex_type=0)
 
+
+def hollow_core_setup(lambda0, core_diam, scale_factor, ref_ind):
+    # create an air rod in the centre, such that the width of the silica ring is equal to the wavelength
+    # rods = [(np.array((0.5, 0.5)), ((core_diam/2) - lambda0) * scale_factor, 1.)]
+    rods = [(np.array((0.5, 0.5)), (core_diam / 2 + lambda0 / 2) * scale_factor, ref_ind),
+            (np.array((0.5, 0.5)), (core_diam / 2) * scale_factor, 1.)]
+
+    core_ind = 1.
+    clad_ind = 1.
+
+    mesh_size = round(lambda0 / 8 * scale_factor, 3)
+    print(f"Hollow core: mesh size = {mesh_size}")
+
+    return core_ind, clad_ind, mesh_size, rods
+
+
 def ScalarLaplacianPMLBeta():
     # Solving the Laplacian, with a 0-form field defined on the vertices
     # Using Dirichlet boundary conditions
@@ -128,28 +144,29 @@ def ScalarLaplacianPMLBeta():
     lambda0 = .5e-6
     k0 = 2*np.pi/lambda0
 
-    # calculate epsilon value (assuming Silica)
-    ref_ind = np.sqrt(calc_silica_epsilon_rel(lambda0))
-    print(ref_ind)
-
-    core_diam = 1.25e-6
-    use_core_radius = 0.25
+    core_diam = 1.5e-6
+    use_core_radius = 0.2
     scale_factor = (use_core_radius * 2) / core_diam  # actual dims x scale factor = sim dims
 
     k0_scaled = k0 / scale_factor
 
-    fs = FibreSolution(mesh_size=0.02, core_radius=use_core_radius, core_n=ref_ind, cladding_n=1., buffer_size=0.1)
-    fs.setup(epsilon_sc_index=0, mu_sc_index=1, merge_type="max", use_pml=True)
+    # calculate epsilon value (assuming Silica)
+    ref_ind = np.sqrt(calc_silica_epsilon_rel(lambda0))
+
+    core_ind, clad_ind, mesh_size, rods = hollow_core_setup(lambda0, core_diam, scale_factor, ref_ind)
+
+    fs = FibreSolution(mesh_size=mesh_size, rods=rods, core_radius=use_core_radius, core_n=core_ind, cladding_n=clad_ind, buffer_size=0.2)
+    fs.setup(epsilon_sc_index=0, mu_sc_index=1, merge_type="max", use_pml=True, tolerance=mesh_size/2)
 
     A1 = fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # d1.T @ Hodge2_inv @ d1
     A2 = k0_scaled ** 2 * fs.Hodges[0][0]
     A = A1 + A2
     B = fs.K[0].star  # Hodge0
 
-    eigval_guess = (.7 * k0 / scale_factor) ** 2 + .1j
+    eigval_guess = (1.4 * k0 / scale_factor) ** 2 + .1j
     print(eigval_guess)
     # eigval_guess = 1.+.1j
-    mode_num = 5
+    mode_num = 10
     eigenvalues, eigenvectors = fs.solve(A, B, mode_number=mode_num, search_near=eigval_guess)
     # eigenvalues are beta squared values
 
@@ -158,18 +175,18 @@ def ScalarLaplacianPMLBeta():
     n_eff = beta / k0
     print(eigenvalues, n_eff)  # gives omega (or beta) values
 
-    fs.plot_n_shaded()
+    fs.plot_n_shaded(show_mesh=True)
     # for m in range(6):
     #     fs.plot_data_on_vertices_shaded(mode=m)
 
-    real_imag_ratio_requirement = 0
+    real_imag_ratio_requirement = 1e1
 
     for m, eig in enumerate(eigenvalues):
         # check that the effective refractive index is between the core and cladding indices
         if fs.cladding_n < n_eff[m] < fs.core_n or True:
             # check that the real part of the eigenvalue is much greater than the imaginary part
             if abs(eig.real / eig.imag) > real_imag_ratio_requirement:
-                fs.plot(m, ("mesh", "shaded", "cross_section",), simplex_type=0)
+                fs.plot(m, ("mesh", "shaded",), simplex_type=0)
 
 def ScalarLaplacianPMLSolid():
     # Solving the Laplacian, with a 0-form field defined on the vertices

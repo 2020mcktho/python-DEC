@@ -17,22 +17,23 @@ epsilon_0 = 8.8541878188e-12  # Fm^-1
 mu_0 = 1.25663706127e-6  # NA^-2
 
 class FibreSolution:
-    def __init__(self, sc: simplicial_complex = None, mesh_size: float = 0.05, scale_factor: float = 1., core_radius: float = 0.4, rods: tuple[tuple[np.ndarray, float]] = (), core_n: complex = 3.5, cladding_n: complex = 1., rod_n: complex = 1., buffer_size: float = 0.05, max_imaginary_index: float = .1):
+    def __init__(self, sc: simplicial_complex = None, mesh_size: float = 0.05, dimension: float = 1., scale_factor: float = 1., core_radius: float = 0.4, rods: tuple[tuple[np.ndarray, float, complex]] = (), core_n: complex = 3.5, cladding_n: complex = 1., buffer_size: float = 0.05, max_imaginary_index: float = .1):
         # if no simplicial complex mesh provided, generate a square mesh instead, using n divisions per side
         if sc is None:
-            vertices, triangles = simplicial_grid_2d(mesh_size)
-            # vertices, triangles = create_circular_fibre_mesh_delaunay(mesh_size, core_radius)
+            # vertices, triangles = simplicial_grid_2d(mesh_size)
+            vertices, triangles = create_circular_fibre_mesh_delaunay(mesh_size, core_radius)
             # vertices, triangles = create_fibre_mesh_delaunay(mesh_size, core_radius)
             # vertices, triangles = create_fibre_mesh(mesh_size, core_radius)
             # Create simplicial complex
             self.K = simplicial_complex(vertices, triangles)
+
+        self.mesh_size = mesh_size
 
         # Example: circle in the center (high-index core)
         self.core_radius = core_radius
         self.rods = rods
         self.core_n = core_n
         self.cladding_n = cladding_n
-        self.rod_n = rod_n
 
         self.buffer_size = buffer_size
 
@@ -115,20 +116,24 @@ class FibreSolution:
                 vert_ind.append(v2)
         return vert_ind
 
-    def create_n_geometry(self):
+    def create_n_geometry(self, tolerance: float | None = None):
         # create a matrix of refractive index values at each vertex
         # these will be averaged to find the values for the edges or faces
         self.n_vals = np.ones(len(self.K.vertices), dtype=complex) * self.cladding_n
+
+        # if the tolerance is not set, use half the step size instead
+        if tolerance is None:
+            tolerance = self.mesh_size / 2
 
         barycenter_points = self.barycenter(0)
         barycenter_points = self.K.vertices
         x, y = barycenter_points.T
         r = np.sqrt((x - 0.5) ** 2 + (y - 0.5) ** 2)
-        self.n_vals[r < self.core_radius] = self.core_n
+        self.n_vals[r <= self.core_radius + tolerance] = self.core_n
 
-        for (rx, ry), rod_radius in self.rods:
+        for (rx, ry), rod_radius, rod_n in self.rods:
             r2 = np.sqrt((x - rx) ** 2 + (y - ry) ** 2)
-            self.n_vals[r2 < rod_radius] = self.rod_n
+            self.n_vals[r2 <= rod_radius + tolerance] = rod_n
 
     def create_n_matrix(self, sc_index: int = 1, merge_type: str = "average"):
         if merge_type == "average":  # use the average of the surrounding points
@@ -160,13 +165,13 @@ class FibreSolution:
 
         self.n_vals += absorption  # add the complex part to the vertices inside the buffer
 
-    def setup(self, epsilon_sc_index: int = 0, mu_sc_index: int = 1, merge_type: str = "average", use_pml: bool = False):
+    def setup(self, epsilon_sc_index: int = 0, mu_sc_index: int = 1, merge_type: str = "average", use_pml: bool = False, tolerance: float | None = None):
         # Set up the fibre geometry and different sections of refractive index
         # Also set up the perfectly matched layer, if it is being used
 
         self.use_pml = use_pml
 
-        self.create_n_geometry()
+        self.create_n_geometry(tolerance)
         if self.use_pml:
             self.create_pml_vertex_buffer()
         self.create_n_matrix(epsilon_sc_index, merge_type)
@@ -268,10 +273,14 @@ class FibreSolution:
 
         return self.eigvals, self.eigvecs
 
-    def plot_n_shaded(self):
+    def plot_n_shaded(self, show_mesh: bool = False):
         mode = np.abs(self.n_vals)  # shade using the epsilon values
         plt.tripcolor(*self.K.vertices.T, mode, shading='gouraud')
-        plt.title("Fundamental Mode Profile")
+
+        if show_mesh:
+            self.plot_mesh()
+
+        plt.title("Refractive Index Profile")
         plt.colorbar()
         plt.show()
 
