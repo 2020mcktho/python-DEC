@@ -119,22 +119,45 @@ def ScalarLaplacianDirichletRods():
                 fs.plot(m, ("shaded",), simplex_type=0)
 
 
+def solid_core_setup(lambda0, core_diam, scale_factor, ref_ind):
+    # create an air rod in the centre, such that the width of the silica ring is equal to the wavelength
+    # rods = [(np.array((0.5, 0.5)), ((core_diam/2) - lambda0) * scale_factor, 1.)]
+    rods = []
+
+    core_ind = ref_ind
+    clad_ind = 1.
+
+    mesh_size = round(lambda0 / 8 * scale_factor, 3)
+    mesh_size = 0.02
+    print(f"Solid core: mesh size = {mesh_size}, index: {ref_ind}")
+
+    k0 = 2 * np.pi / lambda0
+    eigval_guess = 1. + 1.j
+
+    return core_ind, clad_ind, mesh_size, rods, eigval_guess
+
+
 def hollow_core_setup(lambda0, core_diam, scale_factor, ref_ind):
     # create an air rod in the centre, such that the width of the silica ring is equal to the wavelength
     # rods = [(np.array((0.5, 0.5)), ((core_diam/2) - lambda0) * scale_factor, 1.)]
     rods = [(np.array((0.5, 0.5)), (core_diam / 2 + lambda0 / 2) * scale_factor, ref_ind),
             (np.array((0.5, 0.5)), (core_diam / 2) * scale_factor, 1.)]
+    # rods = []
 
     core_ind = 1.
     clad_ind = 1.
 
     mesh_size = round(lambda0 / 8 * scale_factor, 3)
+    mesh_size = 0.02
     print(f"Hollow core: mesh size = {mesh_size}")
 
-    return core_ind, clad_ind, mesh_size, rods
+    k0 = 2 * np.pi / lambda0
+    eigval_guess = (1. * k0 / scale_factor) ** 2 + .1j
+
+    return core_ind, clad_ind, mesh_size, rods, eigval_guess
 
 
-def ScalarLaplacianPMLBeta():
+def ScalarLaplacianWavePMLBeta():
     # Solving the Laplacian, with a 0-form field defined on the vertices
     # Using Dirichlet boundary conditions
     # Eigenvalues can be interpreted as Beta values for propagation constant
@@ -153,20 +176,18 @@ def ScalarLaplacianPMLBeta():
     # calculate epsilon value (assuming Silica)
     ref_ind = np.sqrt(calc_silica_epsilon_rel(lambda0))
 
-    core_ind, clad_ind, mesh_size, rods = hollow_core_setup(lambda0, core_diam, scale_factor, ref_ind)
+    # core_ind, clad_ind, mesh_size, rods, eigval_guess = hollow_core_setup(lambda0, core_diam, scale_factor, ref_ind)
+    core_ind, clad_ind, mesh_size, rods, eigval_guess = solid_core_setup(lambda0, core_diam, scale_factor, ref_ind)
 
     fs = FibreSolution(mesh_size=mesh_size, rods=rods, core_radius=use_core_radius, core_n=core_ind, cladding_n=clad_ind, buffer_size=0.2)
     fs.setup(epsilon_sc_index=0, mu_sc_index=1, merge_type="max", use_pml=True, tolerance=mesh_size/2)
 
-    A1 = fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # d1.T @ Hodge2_inv @ d1
-    A2 = k0_scaled ** 2 * fs.Hodges[0][0]
+    A1 = fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # d0.T @ mu * Hodge1 @ d0
+    A2 = k0_scaled ** 2 * fs.Hodges[0][0]  # k0**2 * epsilon * Hodge0
     A = A1 + A2
     B = fs.K[0].star  # Hodge0
 
-    eigval_guess = (1.4 * k0 / scale_factor) ** 2 + .1j
-    print(eigval_guess)
-    # eigval_guess = 1.+.1j
-    mode_num = 10
+    mode_num = 30
     eigenvalues, eigenvectors = fs.solve(A, B, mode_number=mode_num, search_near=eigval_guess)
     # eigenvalues are beta squared values
 
@@ -230,11 +251,43 @@ def ScalarLaplacianPMLSolid():
             # fs.plot_data_on_vertices_shaded(mode=m)
             # fs.plot_contours(mode=m)
 
-def InhomogeneousWaveEqn():
-    # RHS:
-    # - d0 @ ( Hodge1_inv @ (  ) )
-    # - d0 @ Hodge1_inv
-    return
+
+def BesselCircularDrum():
+    # equation: Laplacian * u = lambda * u
+    # u = eigenvectors
+    # lambda = eigenvalues
+
+    # Laplacian = Hodge0_inv * d0_inv * Hodge1 * d0
+
+    use_core_radius = 0.4
+    mesh_size = .02
+    eigval_guess = 1.
+    core_ind = 1.
+    clad_ind = 0.999
+
+    fs = FibreSolution(mesh_size=mesh_size, core_radius=use_core_radius, core_n=core_ind, cladding_n=clad_ind, buffer_size=0.2)
+    fs.setup(epsilon_sc_index=0, mu_sc_index=1, merge_type="max", use_pml=True, tolerance=mesh_size / 2)
+
+    A = fs.K[0].star_inv @ fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # Hodge0_inv * d0.T @ mu * Hodge1 @ d0
+    B = identity(fs.K[0].num_simplices, format="csr")  # identity matrix, with same dimensions as A
+
+    mode_num = 5
+    eigenvalues, eigenvectors = fs.solve_with_dirichlet_core(A, B, mode_number=mode_num, boundary_type=0, search_near=eigval_guess)
+    # eigenvalues are beta squared values
+
+    print(eigenvalues)
+
+    fs.plot_n_shaded(show_mesh=True)
+    # for m in range(6):
+    #     fs.plot_data_on_vertices_shaded(mode=m)
+
+    real_imag_ratio_requirement = 1e1
+
+    for m, eig in enumerate(eigenvalues):
+        # check that the real part of the eigenvalue is much greater than the imaginary part
+        if abs(eig.real / eig.imag) > real_imag_ratio_requirement:
+            fs.plot(m, ("mesh", "shaded",), simplex_type=0)
+
 
 def Laplace_square():
     fs = FibreSolution(mesh_size=0.05, core_radius=0.25)
@@ -244,7 +297,7 @@ def Laplace_square():
     A = fs.Hodges[0][1] @ fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # Hodge0_inv @ d0.T @ Hodge1 @ d0
     B = identity(fs.K[0].num_simplices, format="csr")  # identity matrix, with same dimensions as A
 
-    eigenvalues, eigenvectors = fs.solve_with_dirichlet(A, B, 0, mode_number=6)
+    eigenvalues, eigenvectors = fs.solve_with_dirichlet_boundary(A, B, 0, mode_number=6)
     print(eigenvalues)  # gives omega (or beta) values
 
     fs.plot_n()

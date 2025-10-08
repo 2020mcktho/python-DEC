@@ -22,6 +22,7 @@ class FibreSolution:
         if sc is None:
             # vertices, triangles = simplicial_grid_2d(mesh_size)
             vertices, triangles = create_circular_fibre_mesh_delaunay(mesh_size, core_radius)
+
             # vertices, triangles = create_fibre_mesh_delaunay(mesh_size, core_radius)
             # vertices, triangles = create_fibre_mesh(mesh_size, core_radius)
             # Create simplicial complex
@@ -179,7 +180,7 @@ class FibreSolution:
         self.apply_n_matrix(epsilon_sc_index)
         self.apply_mu(mu_sc_index)
 
-    def solve_with_dirichlet_core(self, A: np.ndarray, B: np.ndarray, boundary_type: int = 1, mode_number: int = 1, eigval_pref: str = "LM", real_matrix: bool = True):
+    def solve_with_dirichlet_core(self, A: np.ndarray, B: np.ndarray, boundary_type: int = 1, mode_number: int = 1, eigval_pref: str = "LM", search_near: complex = 1., real_matrix: bool = True):
         # identify the edges going from core to cladding vertices
         indices1 = self.get_core_boundary_edge_indices()
         indices = self.get_refractive_index_edge_boundary_indices()
@@ -210,11 +211,11 @@ class FibreSolution:
         # Solve the reduced eigenproblem: A e = λ B e
         # if a perfectly matched layer is being used, this will always require the complex solver
         if real_matrix and not self.use_pml:  # when the matrix is known to be symmetric or Hermitian
-            eigvals, eigvecs_reduced = spla.eigsh(A_reduced, k=mode_number, M=B_reduced, sigma=1.0,
+            eigvals, eigvecs_reduced = spla.eigsh(A_reduced, k=mode_number, M=B_reduced, sigma=search_near,
                                                   which=eigval_pref)
         else:  # when the matrix may be complex
             eigvals, eigvecs_reduced = spla.eigs(A_reduced.astype(complex), k=mode_number,
-                                                 M=B_reduced.astype(complex), sigma=1.0, which=eigval_pref)
+                                                 M=B_reduced.astype(complex), sigma=search_near, which=eigval_pref)
 
         # Sort the eigenpairs (sometimes eigsh returns unordered)
         idx = np.argsort(eigvals)
@@ -228,7 +229,7 @@ class FibreSolution:
         self.eigvals, self.eigvecs = eigvals, eigvecs_full
         return self.eigvals, self.eigvecs
 
-    def solve_with_dirichlet(self, A: np.ndarray, B: np.ndarray, boundary_type: int = 1, mode_number: int = 1, eigval_pref: str = "LM", real_matrix: bool = True):
+    def solve_with_dirichlet_boundary(self, A: np.ndarray, B: np.ndarray, boundary_type: int = 1, mode_number: int = 1, eigval_pref: str = "LM", search_near: complex = 1., real_matrix: bool = True):
         # Find boundary and internal edges
         if boundary_type == 1:  # edges on the boundary
             boundary_indices, internal_indices = self.get_ext_and_int_edge_ind()
@@ -242,9 +243,9 @@ class FibreSolution:
         # Solve the reduced eigenproblem: A e = λ B e
         # if a perfectly matched layer is being used, this will always require the complex solver
         if real_matrix and not self.use_pml:  # when the matrix is known to be symmetric or Hermitian
-            eigvals, eigvecs_reduced = spla.eigsh(A_reduced, k=mode_number, M=B_reduced, sigma=1.0, which=eigval_pref)
+            eigvals, eigvecs_reduced = spla.eigsh(A_reduced, k=mode_number, M=B_reduced, sigma=search_near, which=eigval_pref)
         else:  # when the matrix may be complex
-            eigvals, eigvecs_reduced = spla.eigs(A_reduced.astype(complex), k=mode_number, M=B_reduced.astype(complex), sigma=1.0, which=eigval_pref)
+            eigvals, eigvecs_reduced = spla.eigs(A_reduced.astype(complex), k=mode_number, M=B_reduced.astype(complex), sigma=search_near, which=eigval_pref)
 
         # Sort the eigenpairs (sometimes eigsh returns unordered)
         idx = np.argsort(eigvals)
