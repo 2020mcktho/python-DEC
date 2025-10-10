@@ -1,4 +1,5 @@
 from fibre_solution import FibreSolution
+from analytical_step_index import solve_step_index
 import numpy as np
 from scipy.sparse import diags, identity
 
@@ -128,11 +129,12 @@ def solid_core_setup(lambda0, core_diam, scale_factor, ref_ind):
     clad_ind = 1.
 
     mesh_size = round(lambda0 / 8 * scale_factor, 3)
-    mesh_size = 0.02
+    mesh_size = 0.01
     print(f"Solid core: mesh size = {mesh_size}, index: {ref_ind}")
 
     k0 = 2 * np.pi / lambda0
-    eigval_guess = 1. + 1.j
+    # eigval_guess = 1. + 1.j
+    eigval_guess = (1. * k0 / scale_factor) ** 2 + .1j
 
     return core_ind, clad_ind, mesh_size, rods, eigval_guess
 
@@ -179,7 +181,7 @@ def ScalarLaplacianWavePMLBeta():
     # core_ind, clad_ind, mesh_size, rods, eigval_guess = hollow_core_setup(lambda0, core_diam, scale_factor, ref_ind)
     core_ind, clad_ind, mesh_size, rods, eigval_guess = solid_core_setup(lambda0, core_diam, scale_factor, ref_ind)
 
-    fs = FibreSolution(mesh_size=mesh_size, rods=rods, core_radius=use_core_radius, core_n=core_ind, cladding_n=clad_ind, buffer_size=0.2)
+    fs = FibreSolution(mesh_size=mesh_size, rods=rods, core_radius=use_core_radius, core_n=core_ind, cladding_n=clad_ind, buffer_size=0.1)
     fs.setup(epsilon_sc_index=0, mu_sc_index=1, merge_type="max", use_pml=True, tolerance=mesh_size/2)
 
     A1 = fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # d0.T @ mu * Hodge1 @ d0
@@ -187,14 +189,14 @@ def ScalarLaplacianWavePMLBeta():
     A = A1 + A2
     B = fs.K[0].star  # Hodge0
 
-    mode_num = 30
+    mode_num = 1
     eigenvalues, eigenvectors = fs.solve(A, B, mode_number=mode_num, search_near=eigval_guess)
     # eigenvalues are beta squared values
 
     beta_sim = np.sqrt(eigenvalues)
     beta = beta_sim * scale_factor
     n_eff = beta / k0
-    print(eigenvalues, n_eff)  # gives omega (or beta) values
+    print(beta, n_eff)  # gives omega (or beta) values
 
     fs.plot_n_shaded(show_mesh=True)
     # for m in range(6):
@@ -207,7 +209,11 @@ def ScalarLaplacianWavePMLBeta():
         if fs.cladding_n < n_eff[m] < fs.core_n or True:
             # check that the real part of the eigenvalue is much greater than the imaginary part
             if abs(eig.real / eig.imag) > real_imag_ratio_requirement:
-                fs.plot(m, ("mesh", "shaded",), simplex_type=0)
+                fs.plot(m, ("mesh", "shaded", "cross_section"), simplex_type=0)
+
+    # compare to the analytical solution
+    solve_step_index(lambda0, core_diam, core_ind, clad_ind)
+
 
 def ScalarLaplacianPMLSolid():
     # Solving the Laplacian, with a 0-form field defined on the vertices
