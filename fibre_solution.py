@@ -17,7 +17,7 @@ epsilon_0 = 8.8541878188e-12  # Fm^-1
 mu_0 = 1.25663706127e-6  # NA^-2
 
 class FibreSolution:
-    def __init__(self, sc: simplicial_complex = None, mesh_size: float = 0.05, dimension: float = 1., scale_factor: float = 1., core_radius: float = 0.4, rods: tuple[tuple[np.ndarray, float, complex]] = (), core_n: complex = 3.5, cladding_n: complex = 1., buffer_size: float = 0.05, max_imaginary_index: float = .1):
+    def __init__(self, sc: simplicial_complex = None, mesh_size: float = 0.05, dimension: float = 1., scale_factor: float = 1., core_radius: float = 0.4, rods: tuple[tuple[np.ndarray, float, complex]] = (), core_n: complex = 3.5, cladding_n: complex = 1., buffer_size: float = 0.05, max_imaginary_index: float = .1, colour_map="cividis"):
         # if no simplicial complex mesh provided, generate a square mesh instead, using n divisions per side
         if sc is None:
             # vertices, triangles = simplicial_grid_2d(mesh_size)
@@ -48,6 +48,8 @@ class FibreSolution:
         self.use_pml = False
         self.max_imaginary_index = max_imaginary_index
         self.setup()
+
+        self.cmap = colour_map
 
     def barycenter(self, sc_index: int = 1):
         return np.average(self.K.vertices[self.K[sc_index].simplices], axis=1)
@@ -226,6 +228,7 @@ class FibreSolution:
         eigvecs_full = np.zeros((dimension, mode_number), dtype=complex)
         eigvecs_full[free, :] = eigvecs_reduced
 
+        # store the eigenvalues and eigenvectors
         self.eigvals, self.eigvecs = eigvals, eigvecs_full
         return self.eigvals, self.eigvecs
 
@@ -268,6 +271,7 @@ class FibreSolution:
             eigvals, eigvecs= spla.eigs(A, k=mode_number, M=B, sigma=search_near, which=eigval_pref)
 
         # Sort the eigenpairs (sometimes eigsh returns unordered)
+        # also, normlise the eigenvectors before storing them
         idx = np.argsort(eigvals)
         self.eigvals = eigvals[idx]
         self.eigvecs = eigvecs[:, idx]
@@ -276,7 +280,7 @@ class FibreSolution:
 
     def plot_n_shaded(self, show_mesh: bool = False):
         mode = np.abs(self.n_vals)  # shade using the epsilon values
-        plt.tripcolor(*self.K.vertices.T, mode, shading='gouraud')
+        plt.tripcolor(*self.K.vertices.T, mode, shading='gouraud', cmap="viridis")
 
         if show_mesh:
             self.plot_mesh()
@@ -322,7 +326,7 @@ class FibreSolution:
 
         edge_centres = self.barycenter(1)
 
-        plt.scatter(*edge_centres.T, c=abs_field, cmap='viridis', s=10)
+        plt.scatter(*edge_centres.T, c=abs_field, cmap=self.cmap, s=10)
         plt.colorbar()
 
         """
@@ -360,9 +364,17 @@ class FibreSolution:
         plt.show()
         """
 
-    def plot_data_shaded(self, mode: int = 0, simplex_type: int = 0):
+    def plot_data_shaded(self, mode: int = 0, simplex_type: int = 0, absolute_field: bool = False):
         centres = self.barycenter(simplex_type)
         abs_field = np.abs(self.eigvecs[:, mode])
+
+        if absolute_field:
+            field = abs_field
+        else:
+            field = self.eigvecs[:, mode]
+
+        # normalise
+        field /= np.max(abs_field)
 
         triang = tri.Triangulation(*centres.T)
 
@@ -376,20 +388,67 @@ class FibreSolution:
 
         # Flatten into list of (x, y) points
         # points = np.column_stack([X.ravel(), Y.ravel()])
-        interp = tri.LinearTriInterpolator(triang, abs_field)
-        abs_field_vals = interp(x_flat, y_flat)
+        interp = tri.LinearTriInterpolator(triang, field)
+        field_vals = interp(x_flat, y_flat)
 
-        # centres = self.barycenter(simplex_type)
-        # abs_field = np.abs(self.eigvecs[:, mode])
-        # print(self.K.vertices.shape, abs_field.shape, self.K[0].simplices)
-        plt.tripcolor(x_flat, y_flat, abs_field_vals, shading='gouraud')
+        plt.tripcolor(x_flat, y_flat, field_vals, shading='gouraud', cmap=self.cmap)
         plt.title(f"Mode {mode} ({self.eigvals[mode]}) Profile")
         plt.colorbar()
+
+    def plot_cross_section(self, mode: int, simplex_type: int, absolute_field: bool = False):
+        centres = self.barycenter(simplex_type)
+        abs_field = np.abs(self.eigvecs[:, mode])
+
+        if absolute_field:
+            field = abs_field
+        else:
+            field = self.eigvecs[:, mode]
+
+        # normalise
+        field /= np.max(abs_field)
+
+        triang = tri.Triangulation(*centres.T)
+
+        x_line = np.linspace(0., 1., 100)
+        y_line = 0 * (x_line) + .5
+        interp = tri.LinearTriInterpolator(triang, field)
+        field_line = interp(x_line, y_line)
+
+        plt.plot(x_line, field_line)
+        plt.vlines([0.5 - self.core_radius, 0.5 + self.core_radius], min(field_line), max(field_line), color="black", linestyles='dashed', label="core boundary")
+        plt.show()
+
+    def plot_radial_cross_sections(self, modes: tuple = (), simplex_type: int = 0, absolute_field: bool = False):
+        centres = self.barycenter(simplex_type)
+
+        x_line = np.linspace(0.5, 1., 1000)
+        y_line = 0 * (x_line) + .5
+
+        for mode in modes:
+            abs_field = np.abs(self.eigvecs[:, mode])
+
+            if absolute_field:
+                field = abs_field
+            else:
+                field = self.eigvecs[:, mode]
+
+            # normalise
+            field /= np.max(abs_field)
+
+            triang = tri.Triangulation(*centres.T)
+            interp = tri.LinearTriInterpolator(triang, field)
+            field_line = interp(x_line, y_line)
+
+            plt.plot(x_line - .5, field_line, label=f"mode {mode}")
+
+        plt.vlines([self.core_radius], -1., 1., color="black", linestyles='dashed', label="core boundary")
+        plt.legend()
+        plt.show()
 
     def plot_data_on_vertices_shaded(self, mode: int = 0):
         abs_field = np.abs(self.eigvecs[:, mode])
         # print(self.K.vertices.shape, abs_field.shape, self.K[0].simplices)
-        plt.tripcolor(*self.K.vertices.T, abs_field, shading='gouraud')
+        plt.tripcolor(*self.K.vertices.T, abs_field, shading='gouraud', cmap=self.cmap)
         plt.title(f"Mode {mode} ({self.eigvals[mode]}) Profile")
         plt.colorbar()
 
@@ -397,14 +456,14 @@ class FibreSolution:
         abs_field = np.abs(self.eigvecs[:, mode])
         edge_centres = self.barycenter(1)
         # print(self.K.vertices.shape, abs_field.shape, self.K[0].simplices)
-        plt.tripcolor(*edge_centres.T, abs_field, shading='gouraud')
+        plt.tripcolor(*edge_centres.T, abs_field, shading='gouraud', cmap=self.cmap)
         plt.title(f"Mode {mode} ({self.eigvals[mode]}) Profile")
         plt.colorbar()
 
     def plot_data_on_vertices(self, mode: int = 0):
         # Plotting field magnitudes on the vertices
         abs_field = np.abs(self.eigvecs[:, mode])
-        plt.scatter(*self.K.vertices.T, c=abs_field, cmap='viridis', s=10)
+        plt.scatter(*self.K.vertices.T, c=abs_field, cmap=self.cmap, s=10)
 
         plt.colorbar()
 
@@ -447,7 +506,7 @@ class FibreSolution:
 
         # Plot contour lines (lines of constant field magnitude)
 
-        contours = plt.contour(grid_x, grid_y, abs_grid, levels=15, cmap='viridis')
+        contours = plt.contour(grid_x, grid_y, abs_grid, levels=15, cmap=self.cmap)
         # plt.clabel(contours, inline=True, fontsize=8)
 
     def plot_mesh(self):
@@ -457,24 +516,9 @@ class FibreSolution:
         # Plot
         plt.triplot(triang, color="black", linewidth=0.5)
 
-    def plot_cross_section(self, mode: int, simplex_type: int):
-        centres = self.barycenter(simplex_type)
-        abs_field = np.abs(self.eigvecs[:, mode])
-
-        triang = tri.Triangulation(*centres.T)
-
-        x_line = np.linspace(0., 1., 100)
-        y_line = 0 * (x_line) + .5
-        interp = tri.LinearTriInterpolator(triang, abs_field)
-        abs_field_line = interp(x_line, y_line)
-
-        plt.plot(x_line, abs_field_line)
-        plt.vlines([0.5 - self.core_radius, 0.5 + self.core_radius], 0, max(abs_field_line), linestyles='dashed', label="core boundary")
-        plt.show()
-
-    def plot(self, mode: int = 0, plot_types: tuple = ("vertices",), simplex_type: int = 0):
+    def plot(self, mode: int = 0, plot_types: tuple = ("vertices",), simplex_type: int = 0, absolute_field: bool = True):
         if "shaded" in plot_types:
-            self.plot_data_shaded(mode, simplex_type)
+            self.plot_data_shaded(mode, simplex_type, absolute_field)
         if "vertices_shaded" in plot_types:
             self.plot_data_on_vertices_shaded(mode)
         if "edges_shaded" in plot_types:
@@ -490,5 +534,5 @@ class FibreSolution:
         plt.show()
 
         if "cross_section" in plot_types:
-            self.plot_cross_section(mode, simplex_type)
+            self.plot_cross_section(mode, simplex_type, absolute_field)
 

@@ -134,7 +134,7 @@ def solid_core_setup(lambda0, core_diam, scale_factor, ref_ind):
 
     k0 = 2 * np.pi / lambda0
     # eigval_guess = 1. + 1.j
-    eigval_guess = (1. * k0 / scale_factor) ** 2 + .1j
+    eigval_guess = (1. * k0 / scale_factor) ** 2
 
     return core_ind, clad_ind, mesh_size, rods, eigval_guess
 
@@ -181,18 +181,19 @@ def ScalarLaplacianWavePMLBeta():
     # core_ind, clad_ind, mesh_size, rods, eigval_guess = hollow_core_setup(lambda0, core_diam, scale_factor, ref_ind)
     core_ind, clad_ind, mesh_size, rods, eigval_guess = solid_core_setup(lambda0, core_diam, scale_factor, ref_ind)
 
+    simplex_type = 0  # scalar field defined on the vertices
     fs = FibreSolution(mesh_size=mesh_size, rods=rods, core_radius=use_core_radius, core_n=core_ind, cladding_n=clad_ind, buffer_size=0.1)
-    fs.setup(epsilon_sc_index=0, mu_sc_index=1, merge_type="max", use_pml=True, tolerance=mesh_size/2)
+    fs.setup(epsilon_sc_index=simplex_type, mu_sc_index=simplex_type+1, merge_type="max", use_pml=True, tolerance=mesh_size/2)
 
     A1 = fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # d0.T @ mu * Hodge1 @ d0
     A2 = k0_scaled ** 2 * fs.Hodges[0][0]  # k0**2 * epsilon * Hodge0
     A = A1 + A2
     B = fs.K[0].star  # Hodge0
 
-    mode_num = 1
+    mode_num = 3
     eigenvalues, eigenvectors = fs.solve(A, B, mode_number=mode_num, search_near=eigval_guess)
-    # eigenvalues are beta squared values
 
+    # eigenvalues are beta squared values
     beta_sim = np.sqrt(eigenvalues)
     beta = beta_sim * scale_factor
     n_eff = beta / k0
@@ -204,12 +205,20 @@ def ScalarLaplacianWavePMLBeta():
 
     real_imag_ratio_requirement = 1e1
 
+    use_abs_field = False
+
+    used_modes = []
     for m, eig in enumerate(eigenvalues):
         # check that the effective refractive index is between the core and cladding indices
         if fs.cladding_n < n_eff[m] < fs.core_n or True:
             # check that the real part of the eigenvalue is much greater than the imaginary part
             if abs(eig.real / eig.imag) > real_imag_ratio_requirement:
-                fs.plot(m, ("mesh", "shaded", "cross_section"), simplex_type=0)
+                used_modes.append(m)
+                fs.plot(m, ("mesh", "shaded"), simplex_type=simplex_type, absolute_field=use_abs_field)
+
+    # plot the mode cross-sections on one graph
+    fs.plot_radial_cross_sections(modes=used_modes, simplex_type=simplex_type, absolute_field=use_abs_field)
+
 
     # compare to the analytical solution
     solve_step_index(lambda0, core_diam, core_ind, clad_ind)
