@@ -3,7 +3,7 @@ import pygmsh
 from scipy.spatial import Delaunay
 
 
-def simplicial_grid_2d(mesh_size):
+def simplicial_grid_2d(mesh_size, core_radius):
     """
     Create an NxN 2d grid in the unit square
 
@@ -105,7 +105,7 @@ def create_circular_fibre_mesh_delaunay(mesh_size, core_radius):
     return mesh_points, simplices
 
 
-def disk_mesh(mesh_size):
+def disk_mesh(mesh_size, core_radius):
     with pygmsh.occ.Geometry() as geom:
         R = 1.0  # unit circle
         circle1 = geom.add_disk([0.0, 0.0, 0.0], R, mesh_size=mesh_size)

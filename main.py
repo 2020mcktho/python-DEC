@@ -1,8 +1,8 @@
 from examples import Laplace_square, EM_field, ScalarLaplacianDirichletRods, ScalarLaplacianPMLSolid, ScalarLaplacianWavePMLBeta, BesselCircularDrum
 
-# Laplace_square()
+Laplace_square()
 # EM_field()
 # ScalarLaplacianDirichletRods()
-ScalarLaplacianWavePMLBeta()
+# ScalarLaplacianWavePMLBeta()
 # ScalarLaplacianPMLSolid()
 # BesselCircularDrum()

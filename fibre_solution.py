@@ -17,11 +17,12 @@ epsilon_0 = 8.8541878188e-12  # Fm^-1
 mu_0 = 1.25663706127e-6  # NA^-2
 
 class FibreSolution:
-    def __init__(self, sc: simplicial_complex = None, mesh_size: float = 0.05, dimension: float = 1., scale_factor: float = 1., core_radius: float = 0.4, rods: tuple[tuple[np.ndarray, float, complex]] = (), core_n: complex = 3.5, cladding_n: complex = 1., buffer_size: float = 0.05, max_imaginary_index: float = .1, colour_map="cividis"):
+    def __init__(self, sc: simplicial_complex = None, mesh_size: float = 0.05, dimension: float = 1., scale_factor: float = 1., core_radius: float = 0.4, rods: tuple[tuple[np.ndarray, float, complex]] = (), core_n: complex = 3.5, cladding_n: complex = 1., buffer_size: float = 0.05, max_imaginary_index: float = .1, colour_map="cividis", mesh_generator=create_circular_fibre_mesh_delaunay):
         # if no simplicial complex mesh provided, generate a square mesh instead, using n divisions per side
         if sc is None:
             # vertices, triangles = simplicial_grid_2d(mesh_size)
-            vertices, triangles = create_circular_fibre_mesh_delaunay(mesh_size, core_radius)
+            # vertices, triangles = create_circular_fibre_mesh_delaunay(mesh_size, core_radius)
+            vertices, triangles = mesh_generator(mesh_size, core_radius)
 
             # vertices, triangles = create_fibre_mesh_delaunay(mesh_size, core_radius)
             # vertices, triangles = create_fibre_mesh(mesh_size, core_radius)
@@ -243,6 +244,10 @@ class FibreSolution:
         A_reduced = A[internal_indices, :][:, internal_indices]
         B_reduced = B[internal_indices, :][:, internal_indices]
 
+        # np.ix_() function docs
+        # https://numpy.org/doc/stable/reference/generated/numpy.ix_.html
+        # A_boundaries = A[]
+
         # Solve the reduced eigenproblem: A e = λ B e
         # if a perfectly matched layer is being used, this will always require the complex solver
         if real_matrix and not self.use_pml:  # when the matrix is known to be symmetric or Hermitian
@@ -418,7 +423,7 @@ class FibreSolution:
         plt.vlines([0.5 - self.core_radius, 0.5 + self.core_radius], min(field_line), max(field_line), color="black", linestyles='dashed', label="core boundary")
         plt.show()
 
-    def plot_radial_cross_sections(self, modes: tuple = (), simplex_type: int = 0, absolute_field: bool = False):
+    def plot_radial_cross_sections(self, modes: tuple = (), simplex_type: int = 0, absolute_field: bool = False, show_core_boundary: bool = True, normalise_tolerance: float = 1e-3):
         centres = self.barycenter(simplex_type)
 
         x_line = np.linspace(0.5, 1., 1000)
@@ -432,16 +437,20 @@ class FibreSolution:
             else:
                 field = self.eigvecs[:, mode]
 
-            # normalise
-            field /= np.max(abs_field)
-
             triang = tri.Triangulation(*centres.T)
             interp = tri.LinearTriInterpolator(triang, field)
             field_line = interp(x_line, y_line)
 
+            # normalise the field line, if its maximum value is greater than the normalise_max value
+            abs_max = np.max(np.abs(field_line))
+            if abs_max > normalise_tolerance:
+                field_line /= abs_max
+
             plt.plot(x_line - .5, field_line, label=f"mode {mode}")
 
-        plt.vlines([self.core_radius], -1., 1., color="black", linestyles='dashed', label="core boundary")
+        if show_core_boundary:
+            plt.vlines([self.core_radius], -1., 1., color="black", linestyles='dashed', label="core boundary")
+
         plt.legend()
         plt.show()
 

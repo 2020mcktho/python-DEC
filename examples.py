@@ -1,7 +1,9 @@
 from fibre_solution import FibreSolution
-from analytical_step_index import solve_step_index
+from analytical_solutions import solve_step_index, analytical_Laplace_square_plot
 import numpy as np
 from scipy.sparse import diags, identity
+
+from my_generation_pydec import create_circular_fibre_mesh_delaunay, simplicial_grid_2d
 
 # Build the generalized eigenvalue problem
 # We solve: A e = λ B e
@@ -305,7 +307,7 @@ def BesselCircularDrum():
 
 
 def Laplace_square():
-    fs = FibreSolution(mesh_size=0.05, core_radius=0.25)
+    fs = FibreSolution(mesh_size=0.02, core_radius=0.25, core_n=1., mesh_generator=simplicial_grid_2d)
     fs.setup(epsilon_sc_index=0)
 
     # Scalar Laplacian, matrices have dimensions of vertex number
@@ -313,8 +315,14 @@ def Laplace_square():
     B = identity(fs.K[0].num_simplices, format="csr")  # identity matrix, with same dimensions as A
 
     eigenvalues, eigenvectors = fs.solve_with_dirichlet_boundary(A, B, 0, mode_number=6)
-    print(eigenvalues)  # gives omega (or beta) values
+    print("simulated eigenvalues:", eigenvalues)  # gives omega (or beta) values
 
-    fs.plot_n()
-    for mode in range(1):
-        fs.plot_data_on_vertices(mode=mode)
+    fs.plot_n_shaded()
+    for mode in range(4):
+        fs.plot(mode, ("mesh", "shaded",), simplex_type=0)
+
+    modes = (0, 1, 2, 3)
+    fs.plot_radial_cross_sections(modes, show_core_boundary=False)
+
+    # analytical solution
+    analytical_Laplace_square_plot(modes)
