@@ -322,7 +322,7 @@ def Laplace_square():
         fs.plot(mode, ("mesh", "shaded",), simplex_type=0)
 
     modes = (0, 1, 2, 3)
-    fs.plot_radial_cross_sections(modes, show_core_boundary=False)
+    fs.plot_radial_cross_sections(modes, show_core_boundary=False, absolute_field=True)
 
     # analytical solution
-    analytical_Laplace_square_plot(modes)
+    analytical_Laplace_square_plot(modes, absolute_field=True)

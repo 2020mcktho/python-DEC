@@ -62,6 +62,10 @@ This also utilises the $FibreSolution$ class to handle basic the mesh generation
 
 Eigenvalues are printed as a list, eigenvalue modes are plotted, and radial cross-section plots are created for the first few modes.
 
+![Lowest order mode image](images/Scalar_Laplacian_lowest_mode.png "Optional Title")
+
+
+
 ## Analysis
 
 The first few modes are also calculated analytically, and their eigenvalues and corresponding radial mode profiles plotted for comparison.

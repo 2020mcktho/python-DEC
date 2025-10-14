@@ -139,12 +139,18 @@ def solve_step_index(lambda0, core_diam, core_n, cladding_n):
     plot_radial_fields(v_squared, a, l, u_roots)
 
 
-def analytical_Laplace_square_plot(modes: tuple):
+def eigenstate_func(x, y, m, n):
+    return np.multiply(np.sin(m * np.pi * x / 1.), np.cos(n * np.pi * y / 1.))
+
+
+def analytical_Laplace_square_plot(modes: tuple, absolute_field: bool = False):
     # eigenvalues = (n**2 + m**2) pi**2 / L**2
     # eigenfunctions = A sin(m*pi*x/L) sin(n*pi*y/L)
 
     # plot the radial solutions
-    nm = np.array([(n, m) for n in range(1, max(modes)) for m in range(1, max(modes))])
+    nm_lst = [(n, m) for n in range(1, max(modes)) for m in range(1, max(modes))]
+    nm_lst.sort(key=lambda a: a[0]**2 + a[1]**2)
+    nm = np.array(nm_lst)
     eigenvalues = np.pi ** 2 / 1.**2 * np.sum(nm ** 2, axis=1)
 
     x_line = np.linspace(0.5, 1., 1000)
@@ -153,10 +159,13 @@ def analytical_Laplace_square_plot(modes: tuple):
     for mode in modes:
         m, n = nm[mode]
 
-        def eigenstate_func(x, y):
-            return np.sin(m * np.pi * x / 1.) * np.cos(n * np.pi * y / 1)
+        field_line = eigenstate_func(x_line, y_line, m, n)
 
-        field_line = eigenstate_func(x_line, y_line)
+        if absolute_field:
+            field_line = np.abs(field_line)
+
+        # normalise the field lines
+        field_line /= np.max(np.abs(field_line))
 
         plt.plot(x_line - .5, field_line, label=f"mode {mode}")
 
