@@ -1,4 +1,4 @@
-from numpy import array, zeros, resize, arange, ravel, concatenate, matrix, transpose, int32, cos, sin, pi, ceil, sqrt
+from numpy import array, zeros, resize, arange, ravel, concatenate, matrix, transpose, int32, cos, sin, pi, ceil, sqrt, clip
 import pygmsh
 from scipy.spatial import Delaunay
 
@@ -28,6 +28,21 @@ def simplicial_grid_2d(mesh_size, core_radius):
         indices[(2 * n * i):(2 * n * (i + 1)), :] = first_row + i * (n + 1)
 
     return (vertices, indices)
+
+
+def create_square_mesh_delaunay(mesh_size, core_radius):
+    mesh_points = [(.5, .5)]  # start with the centre point in the list
+
+    # create points around the boundary box
+    for x in arange(0., 1. + mesh_size, mesh_size):
+        for y in arange(0., 1. + mesh_size, mesh_size):
+            mesh_points.append((x, y))
+
+    mesh_points = array(mesh_points)
+    tri = Delaunay(mesh_points)
+    simplices = tri.simplices
+
+    return mesh_points, simplices
 
 
 def create_fibre_mesh(mesh_size, core_radius):
@@ -73,7 +88,7 @@ def create_fibre_mesh_delaunay(mesh_size, core_radius):
     return mesh_points, simplices
 
 
-def create_circular_fibre_mesh_delaunay(mesh_size, core_radius):
+def create_uniform_circular_fibre_mesh_delaunay(mesh_size, core_radius):
     mesh_points = [(.5, .5)]  # start with the centre point in the list
 
     # create points around the boundary box
@@ -97,6 +112,51 @@ def create_circular_fibre_mesh_delaunay(mesh_size, core_radius):
             y = centre_circle[1] + circle_radius * sin(theta)
             if 0 <= x <= 1 and 0 <= y <= 1:
                 mesh_points.append((x, y))
+
+    mesh_points = array(mesh_points)
+    tri = Delaunay(mesh_points)
+    simplices = tri.simplices
+
+    return mesh_points, simplices
+
+
+def create_adaptive_circular_fibre_mesh_delaunay(mesh_size, core_radius, max_mesh_size=.1, mesh_boundary_change_dist=.1):
+    mesh_points = [(.5, .5)]  # start with the centre point in the list
+
+    # create points around the boundary box
+    boundary_mesh_size = max_mesh_size
+    for x in arange(0., 1. + boundary_mesh_size, boundary_mesh_size):
+        for y in arange(0., 1. + boundary_mesh_size, boundary_mesh_size):
+            if x == 0 or x == 1 or y == 0 or y == 1:
+                mesh_points.append((x, y))
+
+    # create circles going outwards, with one circle on the core boundary
+    # mesh_size determines the minimum mesh size
+    # create the circle radii to use, and the mesh size for that layer
+
+    def mesh_size_calc(radius):
+        percentage = abs(radius - core_radius) / mesh_boundary_change_dist
+        return clip(mesh_size + percentage * (max_mesh_size - mesh_size), mesh_size, max_mesh_size)
+
+    circle_radius = mesh_size_calc(0)
+    max_radius = .5 * sqrt(2)
+    centre_circle = (.5, .5)
+
+    while circle_radius < max_radius:
+        # calculate mesh size based on the distance to the core radius
+        use_mesh_size = mesh_size_calc(circle_radius)
+
+        circle_circ = 2 * pi * circle_radius
+        n_circle_points = int(ceil(circle_circ / use_mesh_size))
+        for i in range(n_circle_points):
+            theta = 2 * pi * i / n_circle_points
+            x = centre_circle[0] + circle_radius * cos(theta)
+            y = centre_circle[1] + circle_radius * sin(theta)
+            if 0 <= x <= 1 and 0 <= y <= 1:
+                mesh_points.append((x, y))
+
+        # add to the overall radius covered
+        circle_radius += use_mesh_size
 
     mesh_points = array(mesh_points)
     tri = Delaunay(mesh_points)
@@ -187,9 +247,10 @@ if __name__ == "__main__":
     # points, triangles = circular_geom_mesh(0.1, 0.25)
     # points, triangles = create_fibre_mesh(0.1, .25)
     # points, triangles = create_fibre_mesh_delaunay(0.1, .25)
-    points, triangles = create_circular_fibre_mesh_delaunay(0.05, .25)
+    # points, triangles = create_uniform_circular_fibre_mesh_delaunay(0.05, .25)
+    points, triangles = create_adaptive_circular_fibre_mesh_delaunay(.01, .2, .05, .1)
 
-    plt.triplot(*points.T, triangles, linewidth=0.3)
+    plt.triplot(*points.T, triangles, linewidth=0.3, marker="o", markersize=1)
     plt.gca().set_aspect("equal")
     plt.title("Triangulated mesh")
     plt.show()

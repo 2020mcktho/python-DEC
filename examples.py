@@ -3,7 +3,7 @@ from analytical_solutions import solve_step_index, analytical_Laplace_square_plo
 import numpy as np
 from scipy.sparse import diags, identity
 
-from my_generation_pydec import create_circular_fibre_mesh_delaunay, simplicial_grid_2d
+from my_generation_pydec import create_uniform_circular_fibre_mesh_delaunay, create_adaptive_circular_fibre_mesh_delaunay, simplicial_grid_2d, create_square_mesh_delaunay
 
 # Build the generalized eigenvalue problem
 # We solve: A e = λ B e
@@ -136,7 +136,7 @@ def solid_core_setup(lambda0, core_diam, scale_factor, ref_ind):
 
     k0 = 2 * np.pi / lambda0
     # eigval_guess = 1. + 1.j
-    eigval_guess = (1. * k0 / scale_factor) ** 2
+    eigval_guess = (1.35 * k0 / scale_factor) ** 2
 
     return core_ind, clad_ind, mesh_size, rods, eigval_guess
 
@@ -183,16 +183,19 @@ def ScalarLaplacianWavePMLBeta():
     # core_ind, clad_ind, mesh_size, rods, eigval_guess = hollow_core_setup(lambda0, core_diam, scale_factor, ref_ind)
     core_ind, clad_ind, mesh_size, rods, eigval_guess = solid_core_setup(lambda0, core_diam, scale_factor, ref_ind)
 
+    mesh_size, max_mesh_size, mesh_change_dist = .01, .05, .1
+    buffer_size, max_imag_index = .1, 1.e1
+
     simplex_type = 0  # scalar field defined on the vertices
-    fs = FibreSolution(mesh_size=mesh_size, rods=rods, core_radius=use_core_radius, core_n=core_ind, cladding_n=clad_ind, buffer_size=0.1)
+    fs = FibreSolution(mesh_size=mesh_size, rods=rods, core_radius=use_core_radius, core_n=core_ind, cladding_n=clad_ind, buffer_size=buffer_size, max_imaginary_index=max_imag_index, mesh_generator=create_adaptive_circular_fibre_mesh_delaunay, generator_args=(max_mesh_size, mesh_change_dist))
     fs.setup(epsilon_sc_index=simplex_type, mu_sc_index=simplex_type+1, merge_type="max", use_pml=True, tolerance=mesh_size/2)
 
     A1 = fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # d0.T @ mu * Hodge1 @ d0
     A2 = k0_scaled ** 2 * fs.Hodges[0][0]  # k0**2 * epsilon * Hodge0
     A = A1 + A2
-    B = fs.K[0].star  # Hodge0
+    B = fs.Hodges[0][2]  # Hodge0, without core epsilon contributions (but including PML still)
 
-    mode_num = 3
+    mode_num = 4
     eigenvalues, eigenvectors = fs.solve(A, B, mode_number=mode_num, search_near=eigval_guess)
 
     # eigenvalues are beta squared values
@@ -205,7 +208,7 @@ def ScalarLaplacianWavePMLBeta():
     # for m in range(6):
     #     fs.plot_data_on_vertices_shaded(mode=m)
 
-    real_imag_ratio_requirement = 1e1
+    real_imag_ratio_requirement = 1e3
 
     use_abs_field = False
 
@@ -276,19 +279,21 @@ def BesselCircularDrum():
 
     # Laplacian = Hodge0_inv * d0_inv * Hodge1 * d0
 
-    use_core_radius = 0.4
-    mesh_size = .02
+    use_core_radius = 0.3
     eigval_guess = 1.
     core_ind = 1.
-    clad_ind = 0.999
+    clad_ind = core_ind - 1e-10
 
-    fs = FibreSolution(mesh_size=mesh_size, core_radius=use_core_radius, core_n=core_ind, cladding_n=clad_ind, buffer_size=0.2)
+    mesh_size, max_mesh_size, mesh_change_dist = .01, .05, .1
+    buffer_size, max_imag_index = .1, 1.e3
+
+    fs = FibreSolution(mesh_size=mesh_size, core_radius=use_core_radius, core_n=core_ind, cladding_n=clad_ind, buffer_size=buffer_size, max_imaginary_index=max_imag_index, mesh_generator=create_adaptive_circular_fibre_mesh_delaunay, generator_args=(max_mesh_size, mesh_change_dist))
     fs.setup(epsilon_sc_index=0, mu_sc_index=1, merge_type="max", use_pml=True, tolerance=mesh_size / 2)
 
-    A = fs.K[0].star_inv @ fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # Hodge0_inv * d0.T @ mu * Hodge1 @ d0
+    A = fs.Hodges[0][1] @ fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # Hodge0_inv * d0.T @ mu * Hodge1 @ d0
     B = identity(fs.K[0].num_simplices, format="csr")  # identity matrix, with same dimensions as A
 
-    mode_num = 5
+    mode_num = 40
     eigenvalues, eigenvectors = fs.solve_with_dirichlet_core(A, B, mode_number=mode_num, boundary_type=0, search_near=eigval_guess)
     # eigenvalues are beta squared values
 
@@ -298,7 +303,7 @@ def BesselCircularDrum():
     # for m in range(6):
     #     fs.plot_data_on_vertices_shaded(mode=m)
 
-    real_imag_ratio_requirement = 1e1
+    real_imag_ratio_requirement = 1e5
 
     for m, eig in enumerate(eigenvalues):
         # check that the real part of the eigenvalue is much greater than the imaginary part
@@ -314,11 +319,11 @@ def Laplace_square():
     A = fs.Hodges[0][1] @ fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # Hodge0_inv @ d0.T @ Hodge1 @ d0
     B = identity(fs.K[0].num_simplices, format="csr")  # identity matrix, with same dimensions as A
 
-    eigenvalues, eigenvectors = fs.solve_with_dirichlet_boundary(A, B, 0, mode_number=6)
+    eigenvalues, eigenvectors = fs.solve_with_dirichlet_boundary(A, B, 0, mode_number=20)
     print("simulated eigenvalues:", eigenvalues)  # gives omega (or beta) values
 
     fs.plot_n_shaded()
-    for mode in range(4):
+    for mode in [0, 1, 2, 3]:
         fs.plot(mode, ("mesh", "shaded",), simplex_type=0)
 
     modes = (0, 1, 2, 3)

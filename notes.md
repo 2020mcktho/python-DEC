@@ -1,10 +1,13 @@
 
 
-# Laplacian Eigenvalue Problem
+# Meeting: Tuesday 7/10/25
+# Aim: provide some proof of concept for DEC being a valid method of simulation
 
-## Formulation
+## Laplacian Square Eigenvalue Problem
 
-### Laplacian Equation
+### Formulation
+
+#### Laplacian Equation
 
 The aim of this is to provide a proof of concept for DEC being applied to solve equations
 
@@ -30,7 +33,7 @@ hence the Laplacian is converted to DEC as:
 
 $\nabla^2 \rightarrow \star^{-1} d^{-1} \star d$.
 
-### Chen and Chew (pg. 66-7)
+#### Chen and Chew (pg. 66-7)
 
 For a scalar field $\phi$, the Laplacian is given by:
 
@@ -40,7 +43,7 @@ where the Laplacian $\nabla^2$ is translated to DEC as:
 
 $\nabla^2 \rightarrow -(d^{-1}_0 \star_1 d_0)$.
 
-### Final DEC Eigenproblem Formulation
+#### Final DEC Eigenproblem Formulation
 
 Representing the scalar field $\phi$ as a 0-form (with values defined on mesh vertices), the eigenproblem can be formulated in DEC as:
 
@@ -54,7 +57,11 @@ Here, the operators have the following effects (in a 3D space):
 
 with the Hodge star $\star^{-1}_0$ converting the result of the $\nabla^2$ operation back into the primal mesh to maintain consistent dimensionality in the formulation. 
 
-## Results
+#### Boundary Conditions
+
+A slowly increasing absorption layer was used to simulate an infinite outer zone, with a complex refractive index component increasing the closer to the boundary that the points were.
+
+### Results
 
 The code for this simulation is found in the $Laplace\_square()$ function. 
 
@@ -62,18 +69,73 @@ This also utilises the $FibreSolution$ class to handle basic the mesh generation
 
 Eigenvalues are printed as a list, eigenvalue modes are plotted, and radial cross-section plots are created for the first few modes.
 
-![Lowest order mode image](images/Scalar_Laplacian_lowest_mode.png "Optional Title")
+![Lowest order mode image](images/Scalar_Laplacian_lowest_mode.png "Lowest order mode")
+Fig. 1: Lowest order mode
 
+![Lowest order mode image](images/Scalar_Laplacian_second_mode_image.png "Lowest order mode")
+Fig. 2: Second lowest order mode
 
+The eigenvalues were sampled from the centre at $(0.5, 0.5)$ to the edge at $(1., 0.5)$ to generate a radial plot for the modes. 
 
-## Analysis
+![Lowest order mode image](images/Scalar_Laplacian_mode_shapes_simulated.png "Simulated mode shapes")
+Fig. 3: Simulated mode shapes
+
+![Lowest order mode image](images/Scalar_Laplacian_mode_shapes_analytical.png "Analytical mode shapes")
+Fig. 4: Analytical mode shapes
+
+Note, there is a difference between the mode shapes for modes 1 and 3 (by index).
+
+I believe this is due to the first modes being diagonally shaped, which in turn may be due to the mesh having diagonal triangles rather than x-y symmetry.
+
+### Analysis
 
 The first few modes are also calculated analytically, and their eigenvalues and corresponding radial mode profiles plotted for comparison.
 
 The simulated eigenvalues are found to be a good match with the theoretical values, and the radial plots (by magnitude) are also similar. This supports the premise that DEC is a valid tool for solving eigenvalue problems.
 
 
+# Meeting: Tuesday 14/10/25
+# Aim: Implement adaptive mesh size, make boundary PML circularly symmetrical, test circular drum pattern
 
 
+## Adaptive Mesh dev log - 14/10/25
+
+An adaptive mesh was created for simulating something with a single circular core. This was done by using an adaptive mesh size which was recalculated for each radial layer starting from the centre. The normalised distance of a point to the core edge was calculated using the equation:
+
+$p = |r - r_c| / s_m$,
+
+where $p$ is the proportional value between $0$ and $1$, $r$ is the distance of the point from the centre, $r_c$ is the core radius, and $s_m$ is the distance over which the step  size should go from minimum to maximum. The step size for this radius is then calculated using linear interpolation between the minimum and maximum step sizes ($s_{min}$ and $s_{max}$ respectively):
+
+$s = s_{min} + p * (s_{max} - s_{min})$,
+
+where $s$ is the step size used for this layer.
+
+![img.png](dev_log_images/adaptive_mesh_img1.png)
+
+Fig. 1: This image was the original version, but the radius was only being increased by the minimum mesh size each layer
+
+![img.png](dev_log_images/adaptive_mesh_img2.png)
+
+Fig. 2: This image was adding the mesh size for the certain radius each time, so that the distance between layers was approximately the same as the last distance between points on the layer. This led to a more even spacing on points rather than closely packed layers of sparse points.
+
+![img.png](dev_log_images/adaptive_mesh_img3.png)
+
+Fig. 3: This image has the initial mesh step size calculated from the centre point, rather than simply setting it to the minimum mesh size. This leads to a more even central distribution of points.
+
+## DEC Bessel Laplacian modifications
+
+The Inverse Hodge star was modified to account for the PML absorption index rather than using the default DEC inverse Hodge. This immediately allowed identification of the cladding states through their high imaginary component of their eigenvalues. For the images below, the buffer layer was set to increase up to a value of $10^3$ over a distance of $0.1$.
+
+![img.png](dev_log_images/bessel_laplacian_fix_img1.png)
+
+Fig. 1: This image demonstrates one of the spurious cladding modes that existed initially, which had a complex eigenvalue component of approximately the same as the modes on the drum surface (inside the core).
+
+![img.png](dev_log_images/bessel_laplacian_fix_img2.png)
+
+Fig. 2: The same mode, but calculated with the PML-modified Hodge star. It can be seen that the imaginary component of the eigenvalue is much greater now, and can thus be identified as a cladding mode which is not desired. 
+
+## Wave beta Laplacian modifictions
+
+Used the PML Hodge inverse rather than the full epsilon Hodge inverse. This led to the refractive index of the eigenmodes being between the core and cladding frequencies finally!
 
 

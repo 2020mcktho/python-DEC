@@ -10,19 +10,19 @@ from pydec import simplicial_complex
 # Step 1: Create a simple 2D mesh (square domain)
 # In real use, you'd load a more realistic PCF mesh with air holes.
 # from pydec.mesh.generation import simplicial_grid_2d
-from my_generation_pydec import simplicial_grid_2d, create_circular_fibre_mesh_delaunay, create_fibre_mesh_delaunay
+from my_generation_pydec import simplicial_grid_2d, create_uniform_circular_fibre_mesh_delaunay, create_fibre_mesh_delaunay
 
 
 epsilon_0 = 8.8541878188e-12  # Fm^-1
 mu_0 = 1.25663706127e-6  # NA^-2
 
 class FibreSolution:
-    def __init__(self, sc: simplicial_complex = None, mesh_size: float = 0.05, dimension: float = 1., scale_factor: float = 1., core_radius: float = 0.4, rods: tuple[tuple[np.ndarray, float, complex]] = (), core_n: complex = 3.5, cladding_n: complex = 1., buffer_size: float = 0.05, max_imaginary_index: float = .1, colour_map="cividis", mesh_generator=create_circular_fibre_mesh_delaunay):
+    def __init__(self, sc: simplicial_complex = None, mesh_size: float = 0.05, dimension: float = 1., scale_factor: float = 1., core_radius: float = 0.4, rods: tuple[tuple[np.ndarray, float, complex]] = (), core_n: complex = 3.5, cladding_n: complex = 1., buffer_size: float = 0.05, max_imaginary_index: float = .1, colour_map="cividis", mesh_generator=create_uniform_circular_fibre_mesh_delaunay, generator_args: tuple = ()):
         # if no simplicial complex mesh provided, generate a square mesh instead, using n divisions per side
         if sc is None:
             # vertices, triangles = simplicial_grid_2d(mesh_size)
             # vertices, triangles = create_circular_fibre_mesh_delaunay(mesh_size, core_radius)
-            vertices, triangles = mesh_generator(mesh_size, core_radius)
+            vertices, triangles = mesh_generator(mesh_size, core_radius, *generator_args)
 
             # vertices, triangles = create_fibre_mesh_delaunay(mesh_size, core_radius)
             # vertices, triangles = create_fibre_mesh(mesh_size, core_radius)
@@ -39,9 +39,9 @@ class FibreSolution:
 
         self.buffer_size = buffer_size
 
-        self.Hodges = [[self.K[0].star.astype(complex), self.K[0].star_inv.astype(complex)],
-                       [self.K[1].star.astype(complex), self.K[1].star_inv.astype(complex)],
-                       [self.K[2].star.astype(complex), self.K[2].star_inv.astype(complex)]]
+        self.Hodges = [[self.K[0].star.astype(complex), self.K[0].star_inv.astype(complex), self.K[0].star.astype(complex), self.K[0].star_inv.astype(complex)],
+                       [self.K[1].star.astype(complex), self.K[1].star_inv.astype(complex), self.K[1].star.astype(complex), self.K[1].star_inv.astype(complex)],
+                       [self.K[2].star.astype(complex), self.K[2].star_inv.astype(complex), self.K[2].star.astype(complex), self.K[2].star_inv.astype(complex)]]
         self.n_vals = np.array([1], dtype=complex)
         self.n_mat = diags(self.n_vals)
         self.n_mat_inv = diags(self.n_vals)
@@ -102,7 +102,6 @@ class FibreSolution:
             eps1, eps2 = self.n_vals[e[0]], self.n_vals[e[1]]
             # if the real parts of these indices are different, it is a boundary between the sections
             if eps1.real != eps2.real:
-                print(eps1, eps2)
                 boundary_edges.append(edge_ind)
 
         return boundary_edges
@@ -147,9 +146,15 @@ class FibreSolution:
             self.n_mat = diags(np.max(self.n_vals[self.K[sc_index].simplices], axis=1))
             self.n_mat_inv = diags(1 / np.max(self.n_vals[self.K[sc_index].simplices], axis=1))
 
-    def apply_n_matrix(self, sc_index: int = 0):
-        self.Hodges[sc_index][0] = self.K[sc_index].star @ (self.n_mat_inv ** 2)
-        self.Hodges[sc_index][1] = self.K[sc_index].star_inv @ (self.n_mat ** 2)
+    def apply_n_matrix(self, sc_index: int = 0, pml_only: bool = False):
+        # if this should only affect the pml matrices, modify Hodges [sc_index][2 and 3]
+        # if this should only affect the epsilon matrices, modify Hodges[sc_index][0 and 1]
+        if pml_only:
+            self.Hodges[sc_index][2] = self.K[sc_index].star @ (self.n_mat_inv ** 2)
+            self.Hodges[sc_index][3] = self.K[sc_index].star_inv @ (self.n_mat ** 2)
+        else:
+            self.Hodges[sc_index][0] = self.K[sc_index].star @ (self.n_mat_inv ** 2)
+            self.Hodges[sc_index][1] = self.K[sc_index].star_inv @ (self.n_mat ** 2)
 
     def apply_mu(self, sc_index: int = 1):
         use_mu = 1  # don't use mu_0 here?
@@ -159,13 +164,22 @@ class FibreSolution:
     def create_pml_vertex_buffer(self):
         # max_imaginary_index controls the decay speed inside the buffer
 
+        # (.5 - buffer_size) gives the radius at which the buffer starts, and it stretches all the way until the corner
+        buffer_start = .5 - self.buffer_size
+        buffer_size = (.5 * np.sqrt(2) - buffer_start)
+
+        def calc_buffer_index_percentage(r):
+            percentage = (r - buffer_start) / buffer_size
+            return percentage ** 2
+
         # find the points within the buffer zone at the edge (for the perfectly matched layer)
         x, y = self.K.vertices.T
         dist_to_edge = np.min([x, 1. - x, y, 1. - y], axis=0)
-        in_buffer = dist_to_edge < self.buffer_size
+        dist_from_centre = np.sqrt((x - .5) ** 2 + (y - .5) ** 2)
+        in_buffer = dist_from_centre > (.5 - self.buffer_size)
         # Add the complex loss part to the refractive index inside the Perfectly Matched Layer
         absorption = np.zeros_like(self.n_vals)
-        absorption[in_buffer] = 1j * (((1 - dist_to_edge[in_buffer] / self.buffer_size) ** 2) * self.max_imaginary_index)
+        absorption[in_buffer] = 1j * (calc_buffer_index_percentage(dist_from_centre[in_buffer]) * self.max_imaginary_index)
 
         self.n_vals += absorption  # add the complex part to the vertices inside the buffer
 
@@ -178,12 +192,13 @@ class FibreSolution:
         self.create_n_geometry(tolerance)
         if self.use_pml:
             self.create_pml_vertex_buffer()
+            self.apply_n_matrix(epsilon_sc_index, True)
         self.create_n_matrix(epsilon_sc_index, merge_type)
 
         self.apply_n_matrix(epsilon_sc_index)
         self.apply_mu(mu_sc_index)
 
-    def solve_with_dirichlet_core(self, A: np.ndarray, B: np.ndarray, boundary_type: int = 1, mode_number: int = 1, eigval_pref: str = "LM", search_near: complex = 1., real_matrix: bool = True):
+    def solve_with_dirichlet_core(self, A: np.ndarray, B: np.ndarray, boundary_type: int = 1, mode_number: int = -1, eigval_pref: str = "LM", search_near: complex = 1., real_matrix: bool = True):
         # identify the edges going from core to cladding vertices
         indices1 = self.get_core_boundary_edge_indices()
         indices = self.get_refractive_index_edge_boundary_indices()
@@ -211,6 +226,11 @@ class FibreSolution:
         A_reduced = A[free, :][:, free]
         B_reduced = B[free, :][:, free]
 
+        # if the mode number is -1, get all the modes
+        if mode_number == -1:
+            print(A_reduced.shape)
+            mode_number = A_reduced.shape[0] - 2
+
         # Solve the reduced eigenproblem: A e = λ B e
         # if a perfectly matched layer is being used, this will always require the complex solver
         if real_matrix and not self.use_pml:  # when the matrix is known to be symmetric or Hermitian
@@ -233,7 +253,7 @@ class FibreSolution:
         self.eigvals, self.eigvecs = eigvals, eigvecs_full
         return self.eigvals, self.eigvecs
 
-    def solve_with_dirichlet_boundary(self, A: np.ndarray, B: np.ndarray, boundary_type: int = 1, mode_number: int = 1, eigval_pref: str = "LM", search_near: complex = 1., real_matrix: bool = True):
+    def solve_with_dirichlet_boundary(self, A: np.ndarray, B: np.ndarray, boundary_type: int = 1, mode_number: int = -1, eigval_pref: str = "LM", search_near: complex = 1., real_matrix: bool = True):
         # Find boundary and internal edges
         if boundary_type == 1:  # edges on the boundary
             boundary_indices, internal_indices = self.get_ext_and_int_edge_ind()
@@ -247,6 +267,10 @@ class FibreSolution:
         # np.ix_() function docs
         # https://numpy.org/doc/stable/reference/generated/numpy.ix_.html
         # A_boundaries = A[]
+
+        # if the mode number is -1, get all the modes
+        if mode_number == -1:
+            mode_number = A_reduced.shape[0]
 
         # Solve the reduced eigenproblem: A e = λ B e
         # if a perfectly matched layer is being used, this will always require the complex solver
@@ -268,8 +292,12 @@ class FibreSolution:
         self.eigvals, self.eigvecs = eigvals, eigvecs_full
         return self.eigvals, self.eigvecs
 
-    def solve(self, A: np.ndarray, B: np.ndarray | None = None, mode_number: int = 1, eigval_pref: str = "LM", real_matrix: bool = True, search_near: complex = 1.+0.j):
-        # Solve the reduced eigenproblem: A e = λ B e
+    def solve(self, A: np.ndarray, B: np.ndarray | None = None, mode_number: int = -1, eigval_pref: str = "LM", real_matrix: bool = True, search_near: complex = 1.+0.j):
+        # if the mode number is -1, get all the modes
+        if mode_number == -1:
+            mode_number = A.shape[0]
+
+        # Solve the eigenproblem: A e = λ B e
         if real_matrix and not self.use_pml:  # when the matrix is known to be symmetric or Hermitian
             eigvals, eigvecs = spla.eigsh(A, k=mode_number, M=B, sigma=search_near, which=eigval_pref)
         else:  # when the matrix may be complex
