@@ -1,7 +1,8 @@
 from fibre_solution import FibreSolution
-from analytical_solutions import solve_step_index, analytical_Laplace_square_plot
+from analytical_solutions import solve_step_index, analytical_Laplace_square_plot, plot_bessel_functions
 import numpy as np
 from scipy.sparse import diags, identity
+from scipy.special import jn_zeros
 
 from my_generation_pydec import create_uniform_circular_fibre_mesh_delaunay, create_adaptive_circular_fibre_mesh_delaunay, simplicial_grid_2d, create_square_mesh_delaunay
 
@@ -279,36 +280,64 @@ def BesselCircularDrum():
 
     # Laplacian = Hodge0_inv * d0_inv * Hodge1 * d0
 
-    use_core_radius = 0.3
-    eigval_guess = 1.
+    use_core_radius = 0.45
+    eigval_guess = 1.+1.j
     core_ind = 1.
     clad_ind = core_ind - 1e-10
 
-    mesh_size, max_mesh_size, mesh_change_dist = .01, .05, .1
-    buffer_size, max_imag_index = .1, 1.e3
+    mesh_size, max_mesh_size, mesh_change_dist = .01, .02, .1
+    buffer_size, max_imag_index = .15, 1.e2
 
     fs = FibreSolution(mesh_size=mesh_size, core_radius=use_core_radius, core_n=core_ind, cladding_n=clad_ind, buffer_size=buffer_size, max_imaginary_index=max_imag_index, mesh_generator=create_adaptive_circular_fibre_mesh_delaunay, generator_args=(max_mesh_size, mesh_change_dist))
-    fs.setup(epsilon_sc_index=0, mu_sc_index=1, merge_type="max", use_pml=True, tolerance=mesh_size / 2)
+    fs.setup(epsilon_sc_index=0, mu_sc_index=1, merge_type="max", use_pml=False, tolerance=mesh_size / 2)
 
     A = fs.Hodges[0][1] @ fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # Hodge0_inv * d0.T @ mu * Hodge1 @ d0
     B = identity(fs.K[0].num_simplices, format="csr")  # identity matrix, with same dimensions as A
 
-    mode_num = 40
+    mode_num = 10
     eigenvalues, eigenvectors = fs.solve_with_dirichlet_core(A, B, mode_number=mode_num, boundary_type=0, search_near=eigval_guess)
-    # eigenvalues are beta squared values
 
-    print(eigenvalues)
+    # calculate the Bessel function zeros from the eigenvalues
+    # Eigenvalues should be given by lambda=j_n,m / R
+    #   lambda=eigenvalue
+    #   j_n,m = jth zero of Bessel function J_n
+    #   R = radius at which Dirichlet is implemented (core radius)
+    bessel_zeros = np.sqrt(eigenvalues) * use_core_radius
 
     fs.plot_n_shaded(show_mesh=True)
-    # for m in range(6):
-    #     fs.plot_data_on_vertices_shaded(mode=m)
 
+    # use the ratio of real to imaginary index to filter the cladding modes (with high imaginary component of the index)
     real_imag_ratio_requirement = 1e5
 
+    use_modes = []
     for m, eig in enumerate(eigenvalues):
         # check that the real part of the eigenvalue is much greater than the imaginary part
         if abs(eig.real / eig.imag) > real_imag_ratio_requirement:
-            fs.plot(m, ("mesh", "shaded",), simplex_type=0)
+            # fs.plot(m, ("mesh", "shaded",), simplex_type=0, absolute_field=False)
+            use_modes.append(m)
+
+    normalise_tolerance = 1.e-3  # for modes with maximum value below this, it will not be normalised since it is approximately zero
+    fs.plot_radial_cross_sections(use_modes, simplex_type=0, normalise_tolerance=normalise_tolerance,
+                                  positive_start=True, min_radius=0., max_radius=use_core_radius)
+
+    # Actual Bessel functions
+    actual_zeros = []
+    # create lists of the first M zeros of the first N Bessel functions
+    N, M = 4, 4  # N = number of Bessel function, M = number of zeros for each
+    # Higher M considers higher order azimuthal circular modes
+    for n in range(N):  # loop through the Bessel function orders
+        for m, val in enumerate(jn_zeros(n, M)):  # loop through the zeros of this Bessel function
+            actual_zeros.append((val, n, m))
+
+    actual_zeros.sort(key=lambda x: x[0])
+
+    # find the number of unique modes by rounding the real component of the modes to the nearest .1
+    rounded_modes = np.around(bessel_zeros[use_modes].real, decimals=3).tolist()
+    unique_modes = list(set(rounded_modes))
+    unique_modes.sort()
+    num_unique_modes = len(unique_modes)
+    print("calculated:", unique_modes, "\nanalytical:", np.around(np.array(actual_zeros[:num_unique_modes]).T[0], decimals=3).tolist())
+    plot_bessel_functions(actual_zeros[:num_unique_modes])
 
 
 def Laplace_square():

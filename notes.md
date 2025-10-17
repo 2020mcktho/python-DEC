@@ -134,8 +134,48 @@ Fig. 1: This image demonstrates one of the spurious cladding modes that existed 
 
 Fig. 2: The same mode, but calculated with the PML-modified Hodge star. It can be seen that the imaginary component of the eigenvalue is much greater now, and can thus be identified as a cladding mode which is not desired. 
 
-## Wave beta Laplacian modifictions
+
+## Wave beta Laplacian modifictions - 15/10/25
 
 Used the PML Hodge inverse rather than the full epsilon Hodge inverse. This led to the refractive index of the eigenmodes being between the core and cladding frequencies finally!
 
+
+# DEC Bessel Simulation Overview
+
+Equation being solved is:
+
+$\nabla ^2 \phi = -\lambda \phi$. 
+
+When $\nabla ^2$ is expressed in polar coordinates and circular symmetry is assumed, then the equation becomes separable. The radial solutions are given by Bessel's functions, which are classified by "order" $n$ 
+
+
+# Catchup Thursday 16/10/25
+
+
+## ToDo - Consider nuances of comparison between DEC result and analytic result
+
+### Comparison and error analysis
+
+To compare the DEC results to the analytic results, we have to integrate the analytic results over the simplices. This is because the result that is stored by DEC is the integral of the scalar function over the simplex.
+
+Alternatively, an approximation would be to evaluate the DEC function at the barycentres.
+
+Method:
+* Integrate the square of the full 2D Bessel solution over the interior of the drum
+* Square the phi wavefunction results
+* Compare the two
+
+Compare how the mesh size affects this, also compare adaptive mesh etc.
+
+### Periodic boundaries
+
+The mesh points on the edge should connect to the similar points on the opposite side
+
+### Circular meshing (Done 17/10/25)
+
+Create a circular mesh that stops at the Dirichlet boundary rather than using a PML
+
+## Notes
+
+Typically, PML is modelled using squares that are radially symmetric, however this is quite possibly just to make the finite difference algorithms work well. For DEC, since it is exact, this should not be a problem and triangles should suffice throughout for the meshing. This has the additional advantage of being easier to create the mesh through a routine such as Delauney triangulation. 
 

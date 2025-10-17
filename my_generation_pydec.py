@@ -127,7 +127,7 @@ def create_adaptive_circular_fibre_mesh_delaunay(mesh_size, core_radius, max_mes
     boundary_mesh_size = max_mesh_size
     for x in arange(0., 1. + boundary_mesh_size, boundary_mesh_size):
         for y in arange(0., 1. + boundary_mesh_size, boundary_mesh_size):
-            if x == 0 or x == 1 or y == 0 or y == 1:
+            if (x == 0 or x == 1 or y == 0 or y == 1) and False:
                 mesh_points.append((x, y))
 
     # create circles going outwards, with one circle on the core boundary
@@ -140,6 +140,7 @@ def create_adaptive_circular_fibre_mesh_delaunay(mesh_size, core_radius, max_mes
 
     circle_radius = mesh_size_calc(0)
     max_radius = .5 * sqrt(2)
+    max_radius = core_radius+mesh_size
     centre_circle = (.5, .5)
 
     while circle_radius < max_radius:

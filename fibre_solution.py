@@ -407,7 +407,7 @@ class FibreSolution:
             field = self.eigvecs[:, mode]
 
         # normalise
-        field /= np.max(abs_field)
+        # field /= np.max(abs_field)
 
         triang = tri.Triangulation(*centres.T)
 
@@ -417,14 +417,18 @@ class FibreSolution:
 
         # Create grid: x = [[0, 0.1, ...], [0, 0.1, ...]], y = [[0, 0, ...], [0.1, 0.1, ...]]
         x, y = np.meshgrid(xs, ys)
-        x_flat, y_flat = x.ravel(), y.ravel()
+        # x_flat, y_flat = x.ravel(), y.ravel()
 
         # Flatten into list of (x, y) points
         # points = np.column_stack([X.ravel(), Y.ravel()])
-        interp = tri.LinearTriInterpolator(triang, field)
-        field_vals = interp(x_flat, y_flat)
+        # interp = tri.LinearTriInterpolator(triang, field)
+        # field_vals = interp(x_flat, y_flat)
 
-        plt.tripcolor(x_flat, y_flat, field_vals, shading='gouraud', cmap=self.cmap)
+        field2 = np.abs(field.copy())
+        field2 /= np.max(field2)
+
+        # plt.tripcolor(x_flat, y_flat, field_vals, shading='gouraud', cmap=self.cmap)
+        plt.tripcolor(*centres.T, field2, shading='gouraud', cmap=self.cmap)
         plt.title(f"Mode {mode} ({self.eigvals[mode]}) Profile")
         plt.colorbar()
 
@@ -451,19 +455,16 @@ class FibreSolution:
         plt.vlines([0.5 - self.core_radius, 0.5 + self.core_radius], min(field_line), max(field_line), color="black", linestyles='dashed', label="core boundary")
         plt.show()
 
-    def plot_radial_cross_sections(self, modes: tuple = (), simplex_type: int = 0, absolute_field: bool = False, show_core_boundary: bool = True, normalise_tolerance: float = 1e-3):
+    def plot_radial_cross_sections(self, modes: list, simplex_type: int = 0, absolute_field: bool = False, positive_start: bool = False, show_core_boundary: bool = True, normalise_tolerance: float = 1e-3, min_radius: float = 0., max_radius: float = .5):
         centres = self.barycenter(simplex_type)
 
-        x_line = np.linspace(0.5, 1., 1000)
+        # sample the eigenvectors from 0->core_radius
+        x_line = np.linspace(.5 - max_radius, .5 - min_radius, 1000)
         y_line = 0 * (x_line) + .5
 
+        min_y, max_y = 1., -1.
         for mode in modes:
-            abs_field = np.abs(self.eigvecs[:, mode])
-
-            if absolute_field:
-                field = abs_field
-            else:
-                field = self.eigvecs[:, mode]
+            field = self.eigvecs[:, mode]
 
             triang = tri.Triangulation(*centres.T)
             interp = tri.LinearTriInterpolator(triang, field)
@@ -471,13 +472,26 @@ class FibreSolution:
 
             # normalise the field line, if its maximum value is greater than the normalise_max value
             abs_max = np.max(np.abs(field_line))
+            print("field max value:", abs_max)
             if abs_max > normalise_tolerance:
                 field_line /= abs_max
 
-            plt.plot(x_line - .5, field_line, label=f"mode {mode}")
+            if absolute_field:  # use the absolute values of the field
+                field_line = np.abs(field_line)
+            elif positive_start:  # make the field positive near the centre (r=0)
+                # sample the field at the first point that isn't zero (so the last point, so that it is closest to the 0 radius)
+                # multiply by the sign of this value to make it positive
+                field_line *= np.sign(field_line[-2])
+
+            # reverse the y-values on the plot so that is plots from the centre outwards
+            plt.plot(.5 - x_line, field_line, label=f"mode {mode}")
+
+            # update the min and max y values
+            min_y = min(np.min(field_line), min_y)
+            max_y = max(np.max(field_line), max_y)
 
         if show_core_boundary:
-            plt.vlines([self.core_radius], -1., 1., color="black", linestyles='dashed', label="core boundary")
+            plt.vlines([self.core_radius], min_y, max_y, color="black", linestyles='dashed', label="core boundary")
 
         plt.legend()
         plt.show()

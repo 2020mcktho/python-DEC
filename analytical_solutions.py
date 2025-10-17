@@ -174,5 +174,24 @@ def analytical_Laplace_square_plot(modes: tuple, absolute_field: bool = False):
     print("analytical eigenvalues:", eigenvalues)
 
 
+def plot_bessel_functions(mode_data: list, radius: float = 1., absolute_field: bool = False):
+    x = np.linspace(0., radius, 1000)
+
+    for ind, (mode_val, n, m) in enumerate(mode_data):
+        # n = bessel function n value
+        # m = zero index of this mode
+        k = mode_val / radius
+        y = jv(n, k * x)
+        y /= np.max(np.abs(y))
+
+        if absolute_field:
+            y = np.abs(y)
+
+        plt.plot(x, y, label=f"mode {ind}")
+
+    plt.legend()
+    plt.show()
+
+
 if __name__ == "__main__":
     solve_step_index(lambda0=.5e-6, core_diam=1.5e-6, core_n=1.46, cladding_n=1.)
