@@ -146,7 +146,19 @@ Equation being solved is:
 
 $\nabla ^2 \phi = -\lambda \phi$. 
 
-When $\nabla ^2$ is expressed in polar coordinates and circular symmetry is assumed, then the equation becomes separable. The radial solutions are given by Bessel's functions, which are classified by "order" $n$ 
+When $\nabla ^2$ is expressed in polar coordinates and circular symmetry is assumed, then the equation becomes separable. The radial solutions are given by Bessel's functions, which are classified by "order" $n$.
+
+
+A radial field function is plotted by interpolating between the resulting eigenvectors (defining the field solution on the vertices). These field functions are plotted against the radius for the different modes.
+Some of the modes are degenerate and have angular solutions such that the radial field is approximately zero along the y=0.5 axis (the axis of symmetry for the setup). These can be filtered out by ignoring radial functions where the maximum value is small compared to the maximum field value.
+
+![img.png](dev_log_images/DEC_bessel_functions.png)
+
+Fig. 1: The radial functions from DEC simulation of the vibrational modes of the drum, normalised such that their maximum value is 1.
+
+![img.png](dev_log_images/analytical_bessel_functions.png)
+
+Fig. 2: The analytical Bessel functions, automatically normalised such that the highest value is 1 by design.
 
 
 # Catchup Thursday 16/10/25
@@ -174,6 +186,9 @@ The mesh points on the edge should connect to the similar points on the opposite
 ### Circular meshing (Done 17/10/25)
 
 Create a circular mesh that stops at the Dirichlet boundary rather than using a PML
+
+![img.png](dev_log_images/circular_meshing.png)
+
 
 ## Notes
 

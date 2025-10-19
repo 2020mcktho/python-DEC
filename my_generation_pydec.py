@@ -140,7 +140,7 @@ def create_adaptive_circular_fibre_mesh_delaunay(mesh_size, core_radius, max_mes
 
     circle_radius = mesh_size_calc(0)
     max_radius = .5 * sqrt(2)
-    max_radius = core_radius+mesh_size
+    max_radius = core_radius+max_mesh_size
     centre_circle = (.5, .5)
 
     while circle_radius < max_radius:

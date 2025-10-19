@@ -2,7 +2,7 @@ from fibre_solution import FibreSolution
 from analytical_solutions import solve_step_index, analytical_Laplace_square_plot, plot_bessel_functions
 import numpy as np
 from scipy.sparse import diags, identity
-from scipy.special import jn_zeros
+from scipy.special import jn_zeros, jv
 
 from my_generation_pydec import create_uniform_circular_fibre_mesh_delaunay, create_adaptive_circular_fibre_mesh_delaunay, simplicial_grid_2d, create_square_mesh_delaunay
 
@@ -60,7 +60,6 @@ def EM_field():
 
     eigenval_num = 6
     # want n_eff around 3 ish, so eigenvalues around (3 * scale_factor) ** 2
-    search_val = (3 * scale_factor * k0) ** 2
     search_val = 1.
     eigenvalues, eigenvectors = fs.solve(A, B, mode_number=eigenval_num, search_near=search_val)
 
@@ -285,7 +284,7 @@ def BesselCircularDrum():
     core_ind = 1.
     clad_ind = core_ind - 1e-10
 
-    mesh_size, max_mesh_size, mesh_change_dist = .01, .02, .1
+    mesh_size, max_mesh_size, mesh_change_dist = .01, .04, .1
     buffer_size, max_imag_index = .15, 1.e2
 
     fs = FibreSolution(mesh_size=mesh_size, core_radius=use_core_radius, core_n=core_ind, cladding_n=clad_ind, buffer_size=buffer_size, max_imaginary_index=max_imag_index, mesh_generator=create_adaptive_circular_fibre_mesh_delaunay, generator_args=(max_mesh_size, mesh_change_dist))
@@ -293,6 +292,8 @@ def BesselCircularDrum():
 
     A = fs.Hodges[0][1] @ fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # Hodge0_inv * d0.T @ mu * Hodge1 @ d0
     B = identity(fs.K[0].num_simplices, format="csr")  # identity matrix, with same dimensions as A
+    # A = fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d
+    # B = fs.Hodges[0][0]
 
     mode_num = 10
     eigenvalues, eigenvectors = fs.solve_with_dirichlet_core(A, B, mode_number=mode_num, boundary_type=0, search_near=eigval_guess)
@@ -316,8 +317,12 @@ def BesselCircularDrum():
             # fs.plot(m, ("mesh", "shaded",), simplex_type=0, absolute_field=False)
             use_modes.append(m)
 
-    normalise_tolerance = 1.e-3  # for modes with maximum value below this, it will not be normalised since it is approximately zero
-    fs.plot_radial_cross_sections(use_modes, simplex_type=0, normalise_tolerance=normalise_tolerance,
+    # only scale the fields which have a maximum value of at least 1/100 of the highest value
+    normalise_percentage = 1.e-2
+
+    max_eigvec_mode = np.max(fs.eigvecs)
+    scale_tolerance = max_eigvec_mode * normalise_percentage  # for modes with maximum value below this, it will not be normalised since it is approximately zero
+    fs.plot_radial_cross_sections(use_modes, simplex_type=0, scale_tolerance=scale_tolerance,
                                   positive_start=True, min_radius=0., max_radius=use_core_radius)
 
     # Actual Bessel functions
@@ -332,13 +337,19 @@ def BesselCircularDrum():
     actual_zeros.sort(key=lambda x: x[0])
 
     # find the number of unique modes by rounding the real component of the modes to the nearest .1
-    rounded_modes = np.around(bessel_zeros[use_modes].real, decimals=3).tolist()
+    decimal_precision = 3
+    rounded_modes = np.around(bessel_zeros[use_modes].real, decimals=decimal_precision).tolist()
     unique_modes = list(set(rounded_modes))
     unique_modes.sort()
     num_unique_modes = len(unique_modes)
-    print("calculated:", unique_modes, "\nanalytical:", np.around(np.array(actual_zeros[:num_unique_modes]).T[0], decimals=3).tolist())
-    plot_bessel_functions(actual_zeros[:num_unique_modes])
+    print("calculated Bessel zeros:", unique_modes, "\nanalytical Bessel zeros:", np.around(np.array(actual_zeros[:num_unique_modes]).T[0], decimals=3).tolist())
+    plot_bessel_functions(actual_zeros[:num_unique_modes], radius=use_core_radius, scale_to_1=True)
 
+    # integrate the square of both the DEC result and the corresponding analytic mode over the full surface to compare
+    mode_integrals = [np.conj(fs.eigvecs[:, mode]) @ B @ fs.eigvecs[:, mode] for mode in use_modes]
+    # The Bessel functions can be normalised to integrate to 1 by dividing them by the square root of these values
+    analytical_integrals = [np.pi * use_core_radius ** 2 * (jv(n+1, zero_val)) ** 2 for zero_val, n, m in actual_zeros]
+    print("mode integrals:", mode_integrals, "\nanalytic integrals:", analytical_integrals)
 
 def Laplace_square():
     fs = FibreSolution(mesh_size=0.02, core_radius=0.25, core_n=1., mesh_generator=simplicial_grid_2d)

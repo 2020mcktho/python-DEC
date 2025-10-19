@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.special import jv, kv, jvp, kvp
+from scipy.special import jv, kv, jvp, kvp, jn_zeros
 from scipy.optimize import root_scalar
 
 # jv = Bessel function 1st kind
@@ -174,7 +174,7 @@ def analytical_Laplace_square_plot(modes: tuple, absolute_field: bool = False):
     print("analytical eigenvalues:", eigenvalues)
 
 
-def plot_bessel_functions(mode_data: list, radius: float = 1., absolute_field: bool = False):
+def plot_bessel_functions(mode_data: list, radius: float = 1., scale_to_1: bool = True, normalise: bool = False, absolute_field: bool = False):
     x = np.linspace(0., radius, 1000)
 
     for ind, (mode_val, n, m) in enumerate(mode_data):
@@ -182,7 +182,14 @@ def plot_bessel_functions(mode_data: list, radius: float = 1., absolute_field: b
         # m = zero index of this mode
         k = mode_val / radius
         y = jv(n, k * x)
-        y /= np.max(np.abs(y))
+
+        # scale such that the function peaks at 1
+        if scale_to_1:
+            y /= np.max(y)
+        # normalise such that integrating the square of the functions over the domain gives 1
+        elif normalise:
+            integrated_val = np.pi * radius ** 2 * (jv(n + 1, mode_val)) ** 2
+            y /= np.sqrt(integrated_val)
 
         if absolute_field:
             y = np.abs(y)

@@ -455,7 +455,7 @@ class FibreSolution:
         plt.vlines([0.5 - self.core_radius, 0.5 + self.core_radius], min(field_line), max(field_line), color="black", linestyles='dashed', label="core boundary")
         plt.show()
 
-    def plot_radial_cross_sections(self, modes: list, simplex_type: int = 0, absolute_field: bool = False, positive_start: bool = False, show_core_boundary: bool = True, normalise_tolerance: float = 1e-3, min_radius: float = 0., max_radius: float = .5):
+    def plot_radial_cross_sections(self, modes: list, simplex_type: int = 0, absolute_field: bool = False, positive_start: bool = False, show_core_boundary: bool = True, scale_tolerance: float = 1e-3, min_radius: float = 0., max_radius: float = .5):
         centres = self.barycenter(simplex_type)
 
         # sample the eigenvectors from 0->core_radius
@@ -470,10 +470,9 @@ class FibreSolution:
             interp = tri.LinearTriInterpolator(triang, field)
             field_line = interp(x_line, y_line)
 
-            # normalise the field line, if its maximum value is greater than the normalise_max value
+            # scale the field line to peak at 1, if its maximum value is greater than the normalise_max value
             abs_max = np.max(np.abs(field_line))
-            print("field max value:", abs_max)
-            if abs_max > normalise_tolerance:
+            if abs_max > scale_tolerance:
                 field_line /= abs_max
 
             if absolute_field:  # use the absolute values of the field
