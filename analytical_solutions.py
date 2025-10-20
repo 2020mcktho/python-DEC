@@ -174,6 +174,20 @@ def analytical_Laplace_square_plot(modes: tuple, absolute_field: bool = False):
     print("analytical eigenvalues:", eigenvalues)
 
 
+def full_Bessel_solution(r, theta, n, m, radius, sine=False, normalise: bool = False):
+    mode_val = jn_zeros(n, m + 1)[int(m)]
+    k = mode_val / radius
+    radial = jv(n, k * r)
+    angular = np.exp(1.j * (n * theta - np.pi / 2 * sine)).real
+    result = radial * angular
+
+    # normalise
+    if normalise:
+        result /= ((np.sqrt(np.pi) * radius * np.abs(jv(n + 1, mode_val))))
+
+    return result
+
+
 def plot_bessel_functions(mode_data: list, radius: float = 1., scale_to_1: bool = True, normalise: bool = False, absolute_field: bool = False):
     x = np.linspace(0., radius, 1000)
 

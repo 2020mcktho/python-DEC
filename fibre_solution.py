@@ -397,38 +397,20 @@ class FibreSolution:
         plt.show()
         """
 
-    def plot_data_shaded(self, mode: int = 0, simplex_type: int = 0, absolute_field: bool = False):
+    def plot_data_shaded(self, mode: int = 0, simplex_type: int = 0, absolute_field: bool = False, real_field: bool = False):
         centres = self.barycenter(simplex_type)
-        abs_field = np.abs(self.eigvecs[:, mode])
 
-        if absolute_field:
-            field = abs_field
+        if real_field:
+            field = self.eigvecs[:, mode].real
         else:
             field = self.eigvecs[:, mode]
+        if absolute_field:
+            field = np.abs(field)
 
         # normalise
         # field /= np.max(abs_field)
 
-        triang = tri.Triangulation(*centres.T)
-
-        grid_step = 0.01
-        xs = np.arange(0, 1 + grid_step, grid_step)
-        ys = np.arange(0, 1 + grid_step, grid_step)
-
-        # Create grid: x = [[0, 0.1, ...], [0, 0.1, ...]], y = [[0, 0, ...], [0.1, 0.1, ...]]
-        x, y = np.meshgrid(xs, ys)
-        # x_flat, y_flat = x.ravel(), y.ravel()
-
-        # Flatten into list of (x, y) points
-        # points = np.column_stack([X.ravel(), Y.ravel()])
-        # interp = tri.LinearTriInterpolator(triang, field)
-        # field_vals = interp(x_flat, y_flat)
-
-        field2 = np.abs(field.copy())
-        field2 /= np.max(field2)
-
-        # plt.tripcolor(x_flat, y_flat, field_vals, shading='gouraud', cmap=self.cmap)
-        plt.tripcolor(*centres.T, field2, shading='gouraud', cmap=self.cmap)
+        plt.tripcolor(*centres.T, field, shading='gouraud', cmap=self.cmap)
         plt.title(f"Mode {mode} ({self.eigvals[mode]}) Profile")
         plt.colorbar()
 
@@ -455,7 +437,7 @@ class FibreSolution:
         plt.vlines([0.5 - self.core_radius, 0.5 + self.core_radius], min(field_line), max(field_line), color="black", linestyles='dashed', label="core boundary")
         plt.show()
 
-    def plot_radial_cross_sections(self, modes: list, simplex_type: int = 0, absolute_field: bool = False, positive_start: bool = False, show_core_boundary: bool = True, scale_tolerance: float = 1e-3, min_radius: float = 0., max_radius: float = .5):
+    def plot_radial_cross_sections(self, modes: list, simplex_type: int = 0, absolute_field: bool = False, positive_start: bool = False, show_core_boundary: bool = True, scale_tolerance: float = 1e-3, min_radius: float = 0., max_radius: float = .5, scale_values: tuple = ()):
         centres = self.barycenter(simplex_type)
 
         # sample the eigenvectors from 0->core_radius
@@ -463,8 +445,11 @@ class FibreSolution:
         y_line = 0 * (x_line) + .5
 
         min_y, max_y = 1., -1.
-        for mode in modes:
+        for ind, mode in enumerate(modes):
             field = self.eigvecs[:, mode]
+
+            if absolute_field:  # use the absolute values of the field
+                field = np.abs(field)
 
             triang = tri.Triangulation(*centres.T)
             interp = tri.LinearTriInterpolator(triang, field)
@@ -473,11 +458,13 @@ class FibreSolution:
             # scale the field line to peak at 1, if its maximum value is greater than the normalise_max value
             abs_max = np.max(np.abs(field_line))
             if abs_max > scale_tolerance:
-                field_line /= abs_max
+                # if an entry in the scale values exists for this, use it to scale the line
+                if len(scale_values) >= ind:
+                    field_line *= scale_values[ind]
+                else:
+                    field_line /= abs_max
 
-            if absolute_field:  # use the absolute values of the field
-                field_line = np.abs(field_line)
-            elif positive_start:  # make the field positive near the centre (r=0)
+            if positive_start:  # make the field positive near the centre (r=0)
                 # sample the field at the first point that isn't zero (so the last point, so that it is closest to the 0 radius)
                 # multiply by the sign of this value to make it positive
                 field_line *= np.sign(field_line[-2])
@@ -566,9 +553,9 @@ class FibreSolution:
         # Plot
         plt.triplot(triang, color="black", linewidth=0.5)
 
-    def plot(self, mode: int = 0, plot_types: tuple = ("vertices",), simplex_type: int = 0, absolute_field: bool = True):
+    def plot(self, mode: int = 0, plot_types: tuple = ("vertices",), simplex_type: int = 0, absolute_field: bool = True, real_field: bool = False):
         if "shaded" in plot_types:
-            self.plot_data_shaded(mode, simplex_type, absolute_field)
+            self.plot_data_shaded(mode, simplex_type, absolute_field, real_field)
         if "vertices_shaded" in plot_types:
             self.plot_data_on_vertices_shaded(mode)
         if "edges_shaded" in plot_types:
