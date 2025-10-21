@@ -194,3 +194,14 @@ Create a circular mesh that stops at the Dirichlet boundary rather than using a 
 
 Typically, PML is modelled using squares that are radially symmetric, however this is quite possibly just to make the finite difference algorithms work well. For DEC, since it is exact, this should not be a problem and triangles should suffice throughout for the meshing. This has the additional advantage of being easier to create the mesh through a routine such as Delauney triangulation. 
 
+
+
+# Meeting Tuesday 21/10/25
+
+## Periodic boundary conditions
+Check that this works for the drum as well
+
+### Sum squares of all errors in plots, graphs of how mesh size controls it
+
+### Consider fibres (simple, Dirichlet conditions)
+Tubular cladding with a Dirichlet boundary

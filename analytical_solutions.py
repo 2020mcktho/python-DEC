@@ -183,35 +183,39 @@ def full_Bessel_solution(r, theta, n, m, radius, sine=False, normalise: bool = F
 
     # normalise
     if normalise:
-        result /= ((np.sqrt(np.pi) * radius * np.abs(jv(n + 1, mode_val))))
+        result /= (np.sqrt(np.pi) * radius * np.abs(jv(n + 1, mode_val)))
 
     return result
 
 
 def plot_bessel_functions(mode_data: list, radius: float = 1., scale_to_1: bool = True, normalise: bool = False, absolute_field: bool = False):
-    x = np.linspace(0., radius, 1000)
+    field_values = []
 
-    for ind, (mode_val, n, m) in enumerate(mode_data):
+    x = np.linspace(0., radius, 1000)
+    theta = 0.
+
+    for ind, (mode_val, n, m, symm) in enumerate(mode_data):
         # n = bessel function n value
         # m = zero index of this mode
-        k = mode_val / radius
-        y = jv(n, k * x)
+        y = full_Bessel_solution(x, theta, n, m, radius, symm, normalise=normalise)
 
         # scale such that the function peaks at 1
         if scale_to_1:
             y /= np.max(y)
-        # normalise such that integrating the square of the functions over the domain gives 1
-        elif normalise:
-            integrated_val = np.pi * radius ** 2 * (jv(n + 1, mode_val)) ** 2
-            y /= np.sqrt(integrated_val)
 
         if absolute_field:
             y = np.abs(y)
 
         plt.plot(x, y, label=f"mode {ind}")
 
+        field_values.append(y)
+
     plt.legend()
+    plt.xlabel("radius")
+    plt.ylabel("field")
     plt.show()
+
+    return np.array(field_values)
 
 
 if __name__ == "__main__":

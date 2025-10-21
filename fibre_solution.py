@@ -17,7 +17,7 @@ epsilon_0 = 8.8541878188e-12  # Fm^-1
 mu_0 = 1.25663706127e-6  # NA^-2
 
 class FibreSolution:
-    def __init__(self, sc: simplicial_complex = None, mesh_size: float = 0.05, dimension: float = 1., scale_factor: float = 1., core_radius: float = 0.4, rods: tuple[tuple[np.ndarray, float, complex]] = (), core_n: complex = 3.5, cladding_n: complex = 1., buffer_size: float = 0.05, max_imaginary_index: float = .1, colour_map="cividis", mesh_generator=create_uniform_circular_fibre_mesh_delaunay, generator_args: tuple = ()):
+    def __init__(self, sc: simplicial_complex = None, mesh_size: float = 0.05, dimension: float = 1., scale_factor: float = 1., core_radius: float = 0.4, rods: tuple[tuple[np.ndarray, float, complex]] = (), core_n: complex = 1., cladding_n: complex = 1., buffer_size: float = 0.05, max_imaginary_index: float = .1, colour_map="cividis", mesh_generator=create_uniform_circular_fibre_mesh_delaunay, generator_args: tuple = ()):
         # if no simplicial complex mesh provided, generate a square mesh instead, using n divisions per side
         if sc is None:
             # vertices, triangles = simplicial_grid_2d(mesh_size)
@@ -28,6 +28,8 @@ class FibreSolution:
             # vertices, triangles = create_fibre_mesh(mesh_size, core_radius)
             # Create simplicial complex
             self.K = simplicial_complex(vertices, triangles)
+        else:
+            self.K = sc
 
         self.mesh_size = mesh_size
 
@@ -84,8 +86,8 @@ class FibreSolution:
             v1, v2 = self.K.vertices[e[0]], self.K.vertices[e[1]]
 
             # loop through the rods and check those boundaries as well
-            in1 = np.sqrt((v1[0] - 0.5) ** 2 + (v1[1] - 0.5) ** 2) < self.core_radius
-            in2 = np.sqrt((v2[0] - 0.5) ** 2 + (v2[1] - 0.5) ** 2) < self.core_radius
+            in1 = np.sqrt((v1[0] - 0.5) ** 2 + (v1[1] - 0.5) ** 2) <= self.core_radius
+            in2 = np.sqrt((v2[0] - 0.5) ** 2 + (v2[1] - 0.5) ** 2) <= self.core_radius
             if in1 != in2:
                 boundary_edges.append(edge_ind)
 
@@ -128,7 +130,7 @@ class FibreSolution:
         if tolerance is None:
             tolerance = self.mesh_size / 2
 
-        barycenter_points = self.barycenter(0)
+        # barycenter_points = self.barycenter(0)
         barycenter_points = self.K.vertices
         x, y = barycenter_points.T
         r = np.sqrt((x - 0.5) ** 2 + (y - 0.5) ** 2)
@@ -408,7 +410,7 @@ class FibreSolution:
             field = np.abs(field)
 
         # normalise
-        # field /= np.max(abs_field)
+        field /= np.max(np.abs(field))
 
         plt.tripcolor(*centres.T, field, shading='gouraud', cmap=self.cmap)
         plt.title(f"Mode {mode} ({self.eigvals[mode]}) Profile")
@@ -438,6 +440,8 @@ class FibreSolution:
         plt.show()
 
     def plot_radial_cross_sections(self, modes: list, simplex_type: int = 0, absolute_field: bool = False, positive_start: bool = False, show_core_boundary: bool = True, scale_tolerance: float = 1e-3, min_radius: float = 0., max_radius: float = .5, scale_values: tuple = ()):
+        field_lines = []
+
         centres = self.barycenter(simplex_type)
 
         # sample the eigenvectors from 0->core_radius
@@ -476,11 +480,17 @@ class FibreSolution:
             min_y = min(np.min(field_line), min_y)
             max_y = max(np.max(field_line), max_y)
 
+            field_lines.append(field_line)
+
         if show_core_boundary:
             plt.vlines([self.core_radius], min_y, max_y, color="black", linestyles='dashed', label="core boundary")
 
         plt.legend()
+        plt.xlabel("radius")
+        plt.ylabel("field")
         plt.show()
+
+        return np.array(field_lines)
 
     def plot_data_on_vertices_shaded(self, mode: int = 0):
         abs_field = np.abs(self.eigvecs[:, mode])
