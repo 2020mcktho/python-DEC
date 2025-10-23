@@ -229,7 +229,8 @@ class FibreSolution:
         B_reduced = B[free, :][:, free]
 
         # if the mode number is -1, get all the modes
-        if mode_number == -1:
+        # also, mode_number must be <= A.shape[0] - 2
+        if mode_number == -1 or mode_number >= A_reduced.shape[0] - 1:
             print(A_reduced.shape)
             mode_number = A_reduced.shape[0] - 2
 
@@ -271,8 +272,10 @@ class FibreSolution:
         # A_boundaries = A[]
 
         # if the mode number is -1, get all the modes
-        if mode_number == -1:
-            mode_number = A_reduced.shape[0]
+        # also, mode_number must be <= A.shape[0] - 2
+        if mode_number == -1 or mode_number >= A_reduced.shape[0] - 1:
+            print(A_reduced.shape)
+            mode_number = A_reduced.shape[0] - 2
 
         # Solve the reduced eigenproblem: A e = λ B e
         # if a perfectly matched layer is being used, this will always require the complex solver
@@ -296,8 +299,10 @@ class FibreSolution:
 
     def solve(self, A: np.ndarray, B: np.ndarray | None = None, mode_number: int = -1, eigval_pref: str = "LM", real_matrix: bool = True, search_near: complex = 1.+0.j):
         # if the mode number is -1, get all the modes
-        if mode_number == -1:
-            mode_number = A.shape[0]
+        # also, mode_number must be <= A.shape[0] - 2
+        if mode_number == -1 or mode_number >= A.shape[0] - 1:
+            print(A.shape)
+            mode_number = A.shape[0] - 2
 
         # Solve the eigenproblem: A e = λ B e
         if real_matrix and not self.use_pml:  # when the matrix is known to be symmetric or Hermitian

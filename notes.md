@@ -179,15 +179,40 @@ Method:
 
 Compare how the mesh size affects this, also compare adaptive mesh etc.
 
+
+The plots were scaled so that the maximum values of the DEC and analytical results matched, then their difference was calculated by subtracting the DEC values from the analytical values. The results are shown below:
+
+![img.png](dev_log_images/difference_plot_DEC.png)
+
+Fig. 1: DEC solution for mode 2 (n=1, m=0).
+
+![img.png](dev_log_images/difference_plot_analytical.png)
+
+Fig. 2: Analytical solution for mode 2.
+
+![img.png](dev_log_images/difference_plot_subtracted.png)
+
+Fig. 3: Difference between the two plots.
+
 ### Periodic boundaries
 
 The mesh points on the edge should connect to the similar points on the opposite side
 
 ### Circular meshing (Done 17/10/25)
 
-Create a circular mesh that stops at the Dirichlet boundary rather than using a PML
+Create a circular mesh that stops at the Dirichlet boundary rather than using a PML. An example of this is shown in Fig. 1
+
+It was noted that the meshes would not smoothly decrease in size, due to the large mesh steps at the centre going deep into the zone where it should be reduced before the new mesh step size is calculated (see Fig. 2). This is a consequence of generating the mesh starting from the centre where there is a large step size. The algorithm for mesh generation was modified to start from the boundary instead, with the results shown in Fig. 3.
 
 ![img.png](dev_log_images/circular_meshing.png)
+
+Fig. 1: The mesh was redesigned to be circular and end at the drum boundary, for the Bessel vibrational mode simulation
+
+![img.png](dev_log_images/circular_meshing_step_size1.png)
+
+Fig. 2: The meshing algorithm starts from the large centre step size, so for simulations with a large difference in minimum and maximum step size, this leads to some sub-optimal mesh designs.
+
+![img.png](dev_log_images/circular_meshing_step_size2.png)
 
 
 ## Notes
@@ -203,5 +228,34 @@ Check that this works for the drum as well
 
 ### Sum squares of all errors in plots, graphs of how mesh size controls it
 
+The difference between the analytical and DEC solutions were calculated, and are displayed in Fig. 1 . These were scaled by multiplying by the dual area of the point at which the difference was calculated, then re-normalised by dividing by the area of the drum face.
+
+![img.png](dev_log_images/error_sum_plot.png)
+
+Fig. 1: Difference between analytical and simulated mode vertex values, for the lowest 6 modes of the vibrating drum.
+
+This figure displays that as the mesh size increases, the agreement between the DEC solution and analytical solution gets drastically worse. This is particularly apparent for the modes with high radial dependence such as the 6th mode, and for a mesh with a maximum vertex separation of at least 0.1.
+
 ### Consider fibres (simple, Dirichlet conditions)
 Tubular cladding with a Dirichlet boundary
+
+
+# Catchup Thursday 23/10/25
+
+### CuPy
+
+Test GPU acceleration using CuPy
+CuPy has sparse matrix solvers that should be compatible with SciPy sparse matrices
+- Convert SciPy sparse matrix to CuPy sparse matrix
+- Solve CuPy sparse matrix using CuPy solvers
+- Convert back to SciPy matrices for plotting etc.
+
+https://deepwiki.com/cupy/cupy/5.2-sparse-matrix-operations
+
+* Convert from SciPy to CuPy
+scipy_sparse_matrix = scipy.sparse.csr_matrix(...)
+cupy_sparse_matrix = cupyx.scipy.sparse.csr_matrix(scipy_sparse_matrix)
+
+* Convert from CuPy to SciPy
+scipy_sparse_matrix = cupy_sparse_matrix.get()
+

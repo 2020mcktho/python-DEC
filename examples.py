@@ -278,21 +278,18 @@ def find_nearest_index(array: np.ndarray, value: complex | float):
     return idx
 
 
-def BesselCircularDrum():
+def BesselCircularDrum(mode_num: int = 6, mesh_size: float = .01, max_mesh_size: float = .05, mesh_change_dist: float = .5, plot_mesh: bool = False, plot_modes: bool = False, plot_difference: bool = False, line_sample: bool = False, plot_rms_difference: bool = False):
     # equation: Laplacian * u = lambda * u
     # u = eigenvectors
     # lambda = eigenvalues
 
     # Laplacian = Hodge0_inv * d0_inv * Hodge1 * d0
 
-    plot_modes = True
-
     use_core_radius = 0.4
     eigval_guess = 1.+1.j
     core_ind = 1.
     clad_ind = core_ind - 1e-10
 
-    mesh_size, max_mesh_size, mesh_change_dist = .01, .05, .5
     buffer_size, max_imag_index = .15, 1.e2
 
     fs = FibreSolution(mesh_size=mesh_size, core_radius=use_core_radius, core_n=core_ind, cladding_n=clad_ind, buffer_size=buffer_size, max_imaginary_index=max_imag_index, mesh_generator=create_adaptive_circular_fibre_mesh_delaunay, generator_args=(max_mesh_size, mesh_change_dist))
@@ -300,10 +297,9 @@ def BesselCircularDrum():
 
     A = fs.Hodges[0][1] @ fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d  # Hodge0_inv * d0.T @ mu * Hodge1 @ d0
     B = identity(fs.K[0].num_simplices, format="csr")  # identity matrix, with same dimensions as A
-    # A = fs.K[0].d.T @ fs.Hodges[1][0] @ fs.K[0].d
-    # B = fs.Hodges[0][0]
 
-    mode_num = 6
+    print(fs.K[0].num_simplices)
+
     eigenvalues, eigenvectors = fs.solve_with_dirichlet_boundary(A, B, mode_number=mode_num, boundary_type=0, search_near=eigval_guess)
 
     # calculate the Bessel function zeros from the eigenvalues
@@ -313,7 +309,8 @@ def BesselCircularDrum():
     #   R = radius at which Dirichlet is implemented (core radius)
     bessel_zeros = np.sqrt(eigenvalues) * use_core_radius
 
-    fs.plot_n_shaded(show_mesh=True)
+    if plot_mesh:
+        fs.plot_n_shaded(show_mesh=True)
 
     # use the ratio of real to imaginary index to filter the cladding modes (with high imaginary component of the index)
     real_imag_ratio_requirement = 1e5
@@ -369,25 +366,15 @@ def BesselCircularDrum():
         # set the scale factor for the DEC mode to be the ratio of the analytical value to the DEC value
         scale_values.append(symmetry_options[symmetry] / np.abs(mode_data[vertex_ind_max]))
 
-        print("vertex:", vertex_max, "abs DEC:", np.abs(mode_data[vertex_ind_max]), "abs analytical:", symmetry_options[symmetry])
-
         # add this mode to the list of which analytic mode this one corresponds to
         corresponding_analytic_modes.append((ind, symmetry))
 
     corresponding_analytic_modes = np.array(corresponding_analytic_modes)
 
-    # plot the radial cross-section of the modes, returning the y-values of the lines
-    field_line_values = fs.plot_radial_cross_sections(use_modes, simplex_type=0, scale_tolerance=scale_tolerance,
-                                  positive_start=True, min_radius=0., max_radius=use_core_radius, absolute_field=True, scale_values=scale_values)
-
-    unique_modes = list(set(corresponding_analytic_modes.T[0]))
-    unique_modes.sort()
-    num_unique_modes = len(unique_modes)
     analytic_bessel_zeros = actual_zeros[corresponding_analytic_modes.T[0]].T[0]
     print("calculated Bessel zeros:", bessel_zeros[use_modes], "\nanalytical Bessel zeros:", analytic_bessel_zeros)
 
     full_analytical_zero_data = np.array([[*actual_zeros[ind], symm] for ind, symm in corresponding_analytic_modes])
-    bessel_field_line_values = plot_bessel_functions(full_analytical_zero_data, radius=use_core_radius, scale_to_1=False, normalise=True, absolute_field=True)
 
     # plot the mesh solutions analytically
     centres = fs.barycenter(0)
@@ -397,19 +384,7 @@ def BesselCircularDrum():
             field = np.array([full_Bessel_solution(np.sqrt((x-.5)**2 + (y-.5)**2), np.arctan2((y-.5), (x-.5)), n, m, use_core_radius, normalise=True, sine=symmetry) for (x, y) in centres])
             field = np.abs(field) / np.max(np.abs(field))
             plt.tripcolor(*centres.T, field, shading='gouraud', cmap="cividis")
-            plt.title(f"Mode {ind} ({mode_val}) Analytical Profile")
-            plt.colorbar()
-            plt.show()
-
-    for ind, (mode_ind, symmetry) in enumerate(corresponding_analytic_modes):
-        if plot_modes:
-            mode_val, n, m = actual_zeros[mode_ind]
-            field = np.array([full_Bessel_solution(np.sqrt((x-.5)**2 + (y-.5)**2), np.arctan2((y-.5), (x-.5)), n, m, use_core_radius, normalise=True, sine=symmetry) for (x, y) in centres])
-            field = np.abs(field) / np.max(np.abs(field))
-
-            field = np.abs(field) - (np.abs(fs.eigvecs[:, ind]) / np.max(np.abs(fs.eigvecs[:, ind])))
-            plt.tripcolor(*centres.T, field, shading='gouraud', cmap="cividis")
-            plt.title(f"Mode {ind} ({mode_val}) Difference Profile")
+            plt.title(f"Mode {use_modes[ind]} ({mode_val}) Analytical Profile")
             plt.colorbar()
             plt.show()
 
@@ -417,23 +392,98 @@ def BesselCircularDrum():
     zeros_percent_diff = np.abs(np.divide((bessel_zeros[use_modes] - analytic_bessel_zeros), analytic_bessel_zeros))
     print("eigenvalue % difference:", zeros_percent_diff)
 
-    # perform a mean square fit to find the difference between the scaled eigenvector plots
-    rt_mean_squares = []
-    for mode, (field_line, bessel_field_line) in enumerate(zip(field_line_values, bessel_field_line_values)):
-        rt_mean_square_diff = np.sqrt(np.mean((field_line - bessel_field_line)**2))
-        rt_mean_squares.append(rt_mean_square_diff)
-    plt.plot(range(len(field_line_values)), rt_mean_squares)
-    plt.xlabel("mode")
-    plt.ylabel("root mean square difference")
-    plt.show()
+    # plot the radial cross-section of the modes, returning the y-values of the lines
+    if line_sample:
+        field_line_values = fs.plot_radial_cross_sections(use_modes, simplex_type=0, scale_tolerance=scale_tolerance, positive_start=True, min_radius=0., max_radius=use_core_radius, absolute_field=True, scale_values=scale_values)
+        bessel_field_line_values = plot_bessel_functions(full_analytical_zero_data, radius=use_core_radius, scale_to_1=False, normalise=True, absolute_field=True)
+
+        # perform a mean square fit to find the difference between the scaled line plots
+        rt_mean_squares = []
+        for mode, (field_line, bessel_field_line) in enumerate(zip(field_line_values, bessel_field_line_values)):
+            rt_mean_square_diff = np.sqrt(np.mean((field_line - bessel_field_line)**2))
+            rt_mean_squares.append(rt_mean_square_diff)
+        plt.plot(range(len(field_line_values)), rt_mean_squares)
+        plt.xlabel("mode")
+        plt.ylabel("root mean square difference")
+        plt.title("rms difference from line sampling")
+        plt.show()
 
     # integrate the square of both the DEC result and the corresponding analytic mode over the full surface to compare
-    # if mode_integrals is 1.+0.j then the eigenvectors are properly normalised
+    # if mode_integrals is approximately 1.+0.j then the eigenvectors are properly normalised
     mode_integrals = [np.conj(fs.eigvecs[:, mode]) @ B @ fs.eigvecs[:, mode] for mode in use_modes]
 
     # The Bessel functions can be normalised to integrate to 1 by dividing them by the square root of these values
     # analytical_integrals = [np.pi * use_core_radius ** 2 * (jv(n+1, zero_val)) ** 2 for zero_val, n, m in actual_zeros]
     # print("mode integrals:", mode_integrals, "\nanalytic integrals:", analytical_integrals)
+
+    # plot the difference between the analytical solution and the DEC solution for each mode
+    # also calculate the root-mean-square difference value for each mode plot
+    rms_values = []
+    for ind, (mode_ind, symmetry) in enumerate(corresponding_analytic_modes):
+        mode_val, n, m = actual_zeros[mode_ind]
+        field = np.array([full_Bessel_solution(np.sqrt((x - .5) ** 2 + (y - .5) ** 2), np.arctan2((y - .5), (x - .5)),
+                                               n, m, use_core_radius, normalise=True, sine=symmetry) for (x, y) in
+                          centres])
+
+        # scale both the analytical and DEC fields
+        scale_val = scale_values[ind]
+        field_diff = np.abs(field) - (np.abs(fs.eigvecs[:, ind]) * scale_val)
+        # weight this by the dual volumes, using the dual_volume attribute of the simplex
+        # divide these values by the area of the drum to fix the scaling a bit
+        weighted_field_diff = np.multiply(field_diff, fs.K[0].dual_volume) / (np.pi * use_core_radius ** 2)
+
+        if plot_difference:
+            plt.tripcolor(*centres.T, weighted_field_diff, shading='gouraud', cmap="cividis")
+            plt.title(f"Mode {use_modes[ind]} ({mode_val}) Difference Profile")
+            plt.colorbar()
+            plt.show()
+
+        # calculate the root-mean-square of the field differences
+        rms_val = np.sqrt(np.mean(weighted_field_diff ** 2))
+        rms_values.append(rms_val)
+
+    # plot the rms difference values
+    print("RMS eigenvector difference:", rms_values)
+    if plot_rms_difference:
+        plt.plot(range(len(corresponding_analytic_modes)), rms_values)
+        plt.xlabel("mode")
+        plt.ylabel("root mean square difference")
+        plt.show()
+
+    # return the percentage difference in the bessel zeros and return the rms difference values
+    return use_modes, zeros_percent_diff, rms_values
+
+
+def BesselMeshRun():
+    mesh_sizes = [.005, .01, .02, .05, .1, .2]
+
+    fig, (ax1, ax2) = plt.subplots(1, 2)
+    # ax1 will be a plot of the eigenvalue differences
+    # ax2 will be a plot of the rms eigenvector differences
+
+    for ind, mesh_size in enumerate(mesh_sizes[:-1]):
+        # for ind2, max_mesh_size in enumerate(mesh_sizes[ind+1:]):
+        max_mesh_size = mesh_sizes[ind + 1]
+        # mesh_change_dist = .05
+        mesh_change_dist = (mesh_size + max_mesh_size) / 2
+
+        label = f"min: {mesh_size}, max: {max_mesh_size}, change: {mesh_change_dist}"
+
+        print("simulating circular drum:\n", label)
+        modes, zeros_percent_diff, rms_values = BesselCircularDrum(mesh_size=mesh_size, max_mesh_size=max_mesh_size, mesh_change_dist=mesh_change_dist)
+
+        ax1.plot(modes, zeros_percent_diff, label=label)
+        ax2.plot(modes, rms_values, label=label)
+
+    ax1.set_xlabel("mode number")
+    ax1.set_ylabel("percentage mode value difference")
+    ax2.set_xlabel("mode number")
+    ax2.set_ylabel("RMS eigenvector difference")
+
+    plt.legend()
+
+    plt.show()
+
 
 def Laplace_square():
     fs = FibreSolution(mesh_size=0.02, core_radius=0.25, core_n=1., mesh_generator=simplicial_grid_2d)
@@ -450,7 +500,7 @@ def Laplace_square():
     for mode in [0, 1, 2, 3]:
         fs.plot(mode, ("mesh", "shaded",), simplex_type=0)
 
-    modes = (0, 1, 2, 3)
+    modes = [0, 1, 2, 3]
     fs.plot_radial_cross_sections(modes, show_core_boundary=False, absolute_field=True)
 
     # analytical solution

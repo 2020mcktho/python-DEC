@@ -1,8 +1,11 @@
-from examples import Laplace_square, EM_field, ScalarLaplacianDirichletRods, ScalarLaplacianPMLSolid, ScalarLaplacianWavePMLBeta, BesselCircularDrum
+from examples import Laplace_square, EM_field, ScalarLaplacianDirichletRods, ScalarLaplacianPMLSolid, ScalarLaplacianWavePMLBeta, BesselCircularDrum, BesselMeshRun
 
-# Laplace_square()
 # EM_field()
+
 # ScalarLaplacianDirichletRods()
 # ScalarLaplacianWavePMLBeta()
 # ScalarLaplacianPMLSolid()
-BesselCircularDrum()
+
+# Laplace_square()
+# BesselCircularDrum(6, .1, .05, .1, True, True)
+BesselMeshRun()
